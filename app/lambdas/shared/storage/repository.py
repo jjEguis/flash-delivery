@@ -15,6 +15,19 @@ class Page:
     next_cursor: str | None = None
 
 
+def page_dto(query, mapper):
+    """Ejecuta una consulta paginada y la convierte en DTO `{items, nextCursor}`.
+
+    Cursores manipulados, de otra consulta o límites inválidos llegan como ValueError
+    desde el repositorio y se traducen a un error de validación (400)."""
+    from lambdas.shared.exceptions import ValidationError
+    try:
+        page = query()
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
+    return {"items": [mapper(item) for item in page.items], "nextCursor": page.next_cursor}
+
+
 def page_limit(value):
     if type(value) is not int or not 1 <= value <= 100:
         raise ValueError("limit debe ser un entero entre 1 y 100")
