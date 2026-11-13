@@ -1,5 +1,15 @@
 # Registro de validación
 
+## SPEC-05 — Dispatch, Availability, Tracking y Analytics — 2026-11-13
+
+Lambdas `flashdelivery-dispatch`, `-availability`, `-tracking` y `-analytics` desplegadas; las 27 operaciones del OpenAPI quedan servidas por API Gateway.
+
+| Comprobación ejecutada | Resultado |
+| --- | --- |
+| `tests/test_http_dispatch_flow.py` | **4 passed** |
+| `tests/integration/test_api_flow.py` | **2 passed**: SPEC-04 y ciclo completo SPEC-05 por HTTP real |
+| Suite completa desde cdk-dev | **115 passed**, 84 s |
+
 ## SPEC-04 — primer flujo vertical por HTTP — 2026-11-13
 
 Lambdas `flashdelivery-identity`, `-stores`, `-couriers` y `-orders` desplegadas desde el ZIP con `scripts.provision`; rutas de API Gateway generadas desde `infra/routes.py`.

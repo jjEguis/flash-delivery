@@ -2,7 +2,7 @@
 
 Base importada del paquete v1.1 aportado por el usuario. Son requisitos y criterios de aceptación; su presencia no implica implementación ni validación. Consultar el [plan](../PLAN_DE_TRABAJO.md) para conocer las brechas actuales.
 
-Estado: SPEC-00 a SPEC-04 implementadas, con evidencias en [validación](../validation.md). Próximo incremento: SPEC-05, Dispatch, Availability, Tracking y Analytics por HTTP.
+Estado: SPEC-00 a SPEC-05 implementadas, con evidencias en [validación](../validation.md). Próximo incremento: SPEC-06, calidad, rendimiento y evidencia.
 
 | Orden | Especificación | Resultado esperado |
 | --- | --- | --- |

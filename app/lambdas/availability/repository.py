@@ -41,6 +41,7 @@ class AvailabilityRepository:
             if not candidates:
                 break
             offset += len(candidates)
+            valid = []
             for courier_id, score in candidates:
                 try:
                     keys.identifier(courier_id)
@@ -48,7 +49,10 @@ class AvailabilityRepository:
                     continue
                 if last and (score, courier_id) <= last:
                     continue
-                raw = self.client.get(heartbeat_key(courier_id))
+                valid.append((courier_id, score))
+            # Un solo viaje a Redis por lote (MGET) en lugar de un GET por candidato.
+            raws = self.client.mget([heartbeat_key(courier_id) for courier_id, _ in valid]) if valid else []
+            for (courier_id, score), raw in zip(valid, raws):
                 try:
                     presence = json.loads(raw) if raw else {}
                 except (ValueError, TypeError):
