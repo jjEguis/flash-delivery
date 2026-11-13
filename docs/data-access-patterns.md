@@ -1,5 +1,7 @@
 > Documento histórico de fase 1. Para el diseño vigente consultar [arquitectura general](ARQUITECTURA_GENERAL.md) y [especificaciones](specs/README.md). Sus diferencias no deben trasladarse a código sin reconciliación.
 
+> El modelo implementado por SPEC-01 está en [modelo de persistencia](data-model/README.md); este documento conserva únicamente el diseño anterior.
+
 # Patrones de acceso — diseño v1
 
 Propuesta para implementación futura en `FlashDeliveryTable`, sin modificar todavía

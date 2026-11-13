@@ -1,8 +1,8 @@
 # FlashDelivery
 
-Aplicación de entregas de última milla con DynamoDB, Redis, Python, Lambda y API Gateway. La infraestructura local y sus pruebas están implementadas; los módulos de negocio siguen pendientes.
+Aplicación de entregas de última milla con DynamoDB, Redis, Python, Lambda y API Gateway. La infraestructura y el modelo de persistencia están implementados. Los endpoints y casos de uso de negocio siguen pendientes.
 
-La organización sigue el [proyecto base del curso](https://gitlab.com/caov_unimag/bd_no_sql):
+Estructura del proyecto:
 
 ```text
 flash-delivery/
@@ -23,7 +23,7 @@ flash-delivery/
 │   │   ├── health/handler.py
 │   │   ├── readiness/handler.py
 │   │   ├── shared/                  # configuración, adaptadores y caché
-│   │   └── orders/, stores/, ...    # módulos de negocio pendientes
+│   │   └── orders/, stores/, ...    # repositorios; casos de uso pendientes
 │   ├── tests/
 │   │   ├── conftest.py              # moto y fakeredis, por prueba
 │   │   ├── test_cache.py
@@ -38,7 +38,7 @@ flash-delivery/
 └── frontend/                       # posterior
 ```
 
-Los antiguos directorios backend/, infrastructure/ y scripts/ de raíz se consolidaron bajo app/. Los handlers exponen `main(event, context)`. El ejemplo usa `items` como dominio didáctico; FlashDelivery tendrá sus propios módulos en ese mismo nivel.
+Los handlers exponen `main(event, context)`. Cada funcionalidad concentra su persistencia y sus futuros casos de uso dentro de `app/lambdas/<módulo>/`.
 
 ## Inicio con Docker
 
@@ -54,7 +54,7 @@ Si tu UID/GID no es 1000, configura `DEV_UID` y `DEV_GID` en `.env`. Los puertos
 
 ## Tests
 
-Como en el ejemplo, los unitarios se ejecutan dentro de cdk-dev sin usar el emulador ni Redis real:
+Los unitarios se ejecutan dentro de cdk-dev sin usar el emulador ni Redis real:
 
 ```bash
 docker compose exec -T cdk-dev python -m pytest tests/ -v
@@ -105,6 +105,18 @@ JSII_RUNTIME_PACKAGE_CACHE=disabled ../.venv/bin/python -m scripts.provision
 
 Compose usa volúmenes para ambos almacenes y AOF para Redis. `docker compose stop` y `docker compose down` conservan volúmenes. `docker compose down --volumes` borra los datos locales y requiere reprovisionar.
 
-Se mantiene MiniStack y el provisionamiento local verificado, sin bootstrap CDK, a diferencia del ejemplo que usa LocalStack/cdklocal. No se presupone que cambiar solo la imagen haga compatibles sus comandos, healthchecks o URLs. Ningún contenedor monta el socket Docker ni se conecta a AWS real. El apagado ordenado fue probado; un corte abrupto y la concurrencia de negocio siguen fuera de esa evidencia.
+Se utiliza MiniStack con provisionamiento CloudFormation local, sin bootstrap CDK. Ningún contenedor monta el socket Docker ni se conecta a AWS real. El apagado ordenado fue probado; un corte abrupto y la concurrencia de negocio siguen fuera de esa evidencia.
 
 Documentación: [arquitectura](docs/ARQUITECTURA_GENERAL.md), [entorno y tests](docs/ENTORNO_LOCAL.md), [especificaciones](docs/specs/README.md), [plan](docs/PLAN_DE_TRABAJO.md) y [evidencias](docs/validation.md).
+
+## Modelo de datos y seed
+
+La tabla única tiene PK/SK y dos GSIs dispersos. Los repositorios cubren AP01–AP12 con lecturas por clave, rangos de fecha y cursores; el seguimiento usa ID más secreto verificable por hash. Detalle en [modelo de datos](docs/data-model/README.md) y [SPEC-01](docs/specs/SPEC-01-DYNAMODB.md).
+
+```bash
+docker compose exec -T cdk-dev python -m scripts.seed_data --namespace SEED_demo
+# Eliminar únicamente los datos sintéticos de ese namespace:
+docker compose exec -T cdk-dev python -m scripts.seed_data --namespace SEED_demo --clean
+```
+
+El seed reinicia sus propios datos al repetirse; no se debe usar su namespace para datos de la aplicación. Presencia Redis dura 60 segundos. No se añaden endpoints de negocio en SPEC-01.

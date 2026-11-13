@@ -3,6 +3,7 @@
 - [Arquitectura general](ARQUITECTURA_GENERAL.md): alcance, módulos, datos e invariantes de la propuesta v1.1.
 - [Plan de trabajo](PLAN_DE_TRABAJO.md): diagnóstico, diferencias con el proyecto del curso y orden recomendado.
 - [Especificaciones](specs/README.md): entregables y criterios de aceptación.
+- [Modelo de persistencia](data-model/README.md): catálogo JSON, claves, consultas AP01–AP12 y seed sintético.
 - [Entorno local](ENTORNO_LOCAL.md): cdk-dev, empaquetado y prueba de persistencia.
 - [Validación existente](validation.md) y [compatibilidad MiniStack](ministack.md): evidencias de infraestructura, con sus límites.
 
