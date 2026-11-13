@@ -1,5 +1,20 @@
 # Registro de validación
 
+## SPEC-02 — transacciones, estados e idempotencia — 2026-11-13
+
+Implementados los comandos T1–T5 y el procedimiento excepcional FAILED como casos de uso, sin HTTP: `orders.service.create_order`, `dispatch.service.accept_order`, `pick_up_order`, `deliver_order`, `cancel_order` y `fail_order`. Cada uno lee con consistencia fuerte, valida reglas para responder errores claros y confirma META, evento, vistas, ACTIVE, agregado y registro idempotente en un único `TransactWriteItems` mediante `shared/storage/transactions.run_command`.
+
+| Comprobación ejecutada | Resultado |
+| --- | --- |
+| Sonda de MiniStack 1.5.36 | `CancellationReasons` por acción, `ADD`/`if_not_exists` dentro de transacciones y `REMOVE` de claves GSI soportados |
+| `tests/test_commands.py` (moto/fakeredis) | **18 passed** |
+| `tests/integration/test_concurrency.py` (MiniStack, hilos) | **2 passed**: 100 aceptaciones concurrentes → 1 ganador; 1 repartidor vs 2 pedidos → máximo 1 |
+| Suite completa desde cdk-dev | **90 passed**, 45.8 s; 77 unitarios y 13 integraciones |
+
+Decisiones: las transiciones sustituyen META y vistas con `expected_version` (la versión leída implica el estado leído); el agregado mensual usa un `Update` con `ADD` para que entregas simultáneas del mismo comercio no compitan por una versión, y no se cuenta dos veces porque la condición de estado del pedido va en la misma transacción. Ante `TransactionConflict` el comando relee y reintenta hasta 3 veces; ante `ConditionalCheckFailed` traduce el motivo de la acción fallida a un código estable (`ORDER_ALREADY_ASSIGNED`, `COURIER_HAS_ACTIVE_ORDER`, `ORDER_CHANGED`, etc.). Antes de interpretar una cancelación se consulta el registro idempotente: si otra solicitud con la misma clave confirmó primero, se devuelve su resultado.
+
+El token de seguimiento se deriva con HMAC (`TRACKING_TOKEN_KEY`) del ID del pedido: un reintento de creación devuelve el mismo token sin guardar el secreto en claro. La invalidación de la caché de estadísticas ocurre después del commit y un fallo de Redis no revierte la entrega.
+
 ## SPEC-01 — modelo de persistencia
 
 Implementados los nueve tipos de ítem de la tabla única, claves/índices canónicos, consultas AP01–AP12, cursores, rangos, condiciones y descriptores de escritura por módulo. El [modelo detallado](data-model/README.md) incluye el [catálogo JSON](data-model/catalogo-items.json). El token de seguimiento localiza el pedido por ID y verifica el secreto por hash antes de leer eventos.
