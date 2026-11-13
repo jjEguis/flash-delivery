@@ -12,3 +12,13 @@ una rama `feature/spec-XX-descripcion` y un pull request con destino a `develop`
 - Excluir credenciales, `.env`, entornos virtuales y artefactos locales del commit.
 
 SPEC-00 incorpora la base local existente porque aún no estaba versionada.
+
+# Estructura del curso
+
+Por instrucción del usuario, seguir la estructura de paquetes del ejemplo
+https://gitlab.com/caov_unimag/bd_no_sql: `app/infra`, `app/lambdas`,
+`app/layers/dependencias`, `app/tests`, `app/requirements.txt` y `app/cdk.json`.
+Los handlers usan `main(event, context)`. Añadir tests con fixtures compartidos
+moto/fakeredis para cada funcionalidad; mantener pruebas reales bajo
+`app/tests/integration`, seleccionadas explícitamente. No eliminar pruebas de
+integración al añadir mocks. Documentación y especificaciones permanecen en docs/.

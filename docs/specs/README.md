@@ -14,4 +14,4 @@ Base importada del paquete v1.1 aportado por el usuario. Son requisitos y criter
 
 Antes de implementar, completar en cada funcionalidad: actor, entradas, autorización, precondiciones, resultado, errores, persistencia y pruebas. SPEC-03 debe cerrar también habilitación administrativa de perfiles, consulta de pedido activo y entrega del token de seguimiento; no basta con las rutas resumidas actuales.
 
-El OpenAPI del paquete original sigue siendo borrador v1.0. Debe alinearse con estas especificaciones antes de usarse para generar código. `requestId` de trazabilidad e `Idempotency-Key` son conceptos distintos: fijar explícitamente su traducción al contrato de aplicación.
+El OpenAPI todavía debe concretarse y alinearse con estas especificaciones antes de generar código de negocio. `requestId` de trazabilidad e `Idempotency-Key` son conceptos distintos: fijar explícitamente su traducción al contrato de aplicación.

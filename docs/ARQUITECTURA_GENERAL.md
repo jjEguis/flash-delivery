@@ -64,7 +64,7 @@ Casos de uso / servicios de aplicación
 | Tracking | Vista pública limitada | `get_tracking` | Orders |
 | Analytics | Agregados de entregas | `get_store_month_stats` | Orders, proyecciones |
 
-**Regla de coordinación:** Dispatch es dueño del caso de uso `accept_order` y del ensamblado de su transacción, pero no debe acceder directamente a repositorios privados. Los módulos propietarios proporcionan **constructores de operaciones transaccionales** (`TransactWrite` descriptors) o puertos explícitos que Dispatch compone en una única llamada DynamoDB. Los contratos se fijan en `../FlashDelivery_Specs_v1/contratos/CONTRATOS.md` (referencia heredada pendiente de alineación) y deben versionarse.
+**Regla de coordinación:** Dispatch es dueño del caso de uso `accept_order` y del ensamblado de su transacción, pero no debe acceder directamente a repositorios privados. Los módulos propietarios proporcionan **constructores de operaciones transaccionales** (`TransactWrite` descriptors) o puertos explícitos que Dispatch compone en una única llamada DynamoDB. Los contratos se fijan en SPEC-03 en `docs/specs/` (contratos pendientes de concretar) y deben versionarse.
 
 ## 5. Casos de uso MVP
 
@@ -125,32 +125,36 @@ Redis es una proyección reconstruible. Después del commit de DynamoDB, invalid
 
 ## 9. API, seguridad y errores
 
-HTTP JSON, prefijo `/api/v1`; contratos completos en `../FlashDelivery_Specs_v1/contratos/openapi.yaml` (borrador inicial, a alinear en SPEC-03). Roles ADMIN, STORE, COURIER. Los IDs del actor provienen de contexto autenticado, nunca de parámetros no confiables. Validar pertenencia de comercio, zona, estado y propiedad de pedido. Seguimiento público con token aleatorio de alta entropía y respuesta mínima, sin datos sensibles innecesarios. Errores uniformes: `{ "error": { "code": "ORDER_ALREADY_ASSIGNED", "message": "...", "requestId": "..." } }`; HTTP 400/401/403/404/409/429/500/503.
+HTTP JSON, prefijo `/api/v1`; contratos completos en el OpenAPI pendiente de concretar en SPEC-03. Roles ADMIN, STORE, COURIER. Los IDs del actor provienen de contexto autenticado, nunca de parámetros no confiables. Validar pertenencia de comercio, zona, estado y propiedad de pedido. Seguimiento público con token aleatorio de alta entropía y respuesta mínima, sin datos sensibles innecesarios. Errores uniformes: `{ "error": { "code": "ORDER_ALREADY_ASSIGNED", "message": "...", "requestId": "..." } }`; HTTP 400/401/403/404/409/429/500/503.
 
 **Autenticación local:** definir en SPEC-03 un adaptador de identidad de desarrollo, explícitamente no apto para producción; nunca confiar en un header de rol arbitrario fuera del entorno local.
 
 ## 10. Estructura del repositorio
 
 ```text
-flashdelivery/
-├── backend/
-│   ├── modules/{identity,stores,couriers,orders,dispatch,availability,tracking,analytics}/
-│   │   ├── domain/                 # reglas y entidades
-│   │   ├── application/            # casos de uso y puertos
-│   │   ├── infrastructure/         # repositorios/adaptadores privados
-│   │   └── presentation/           # handlers HTTP/Lambda
-│   ├── shared/{contracts,config,aws,redis,errors}/
-│   └── tests/{unit,integration,concurrency}/
-├── infrastructure/{cdk,docker}/
-├── scripts/
-├── docs/                         # arquitectura, plan y evidencias
-│   └── specs/                    # especificaciones canónicas
-├── frontend/                      # posterior
+flash-delivery/
+├── app/
+│   ├── cdk.json
+│   ├── requirements.txt / requirements.lock
+│   ├── infra/{app.py,stack.py}
+│   ├── layers/dependencias/{requirements.txt,requirements.lock}
+│   ├── lambdas/
+│   │   ├── health/handler.py
+│   │   ├── readiness/handler.py
+│   │   ├── {identity,stores,couriers,orders,dispatch,availability,tracking,analytics}/
+│   │   └── shared/               # primitivas, configuración, adaptadores y caché
+│   ├── tests/                    # unitarios moto/fakeredis
+│   │   └── integration/          # MiniStack y Redis reales
+│   └── scripts/                  # paquete, provisionamiento y persistencia
+├── docs/
+│   └── specs/
+├── frontend/                     # posterior
+├── Dockerfile
 ├── docker-compose.yml
 └── .env.example
 ```
 
-Evitar carpetas vacías y capas artificiales: generar cada subcarpeta cuando tenga código real. `shared` contiene únicamente primitivas transversales, nunca lógica de negocio.
+Estructura alineada con el ejemplo del curso por instrucción del usuario. Los handlers de cada funcionalidad exponen `main(event, context)`; casos de uso y repositorios se incorporarán dentro de su módulo cuando se implementen. Evitar carpetas vacías y capas artificiales: generar cada subcarpeta cuando tenga código real. `shared` contiene únicamente primitivas transversales, nunca lógica de negocio.
 
 ## 11. MiniStack: estrategia de validación y despliegue local
 

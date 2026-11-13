@@ -1,4 +1,0 @@
--c requirements-runtime.lock
-boto3==1.42.0
-redis==6.4.0
-python-dotenv==1.2.1

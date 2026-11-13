@@ -13,7 +13,7 @@ Entorno local reproducible para DynamoDB, Lambda, API Gateway y Redis sin utiliz
 - No reemplazar MiniStack por LocalStack sin autorización.
 
 ## Entregables
-1. `docker-compose.yml`, `.env.example`, `scripts/` con bootstrap idempotente.
+1. `docker-compose.yml`, `.env.example`, `app/scripts/` con bootstrap idempotente.
 2. Infraestructura que crea `FlashDeliveryTable`, GSI1 y GSI2.
 3. Adaptadores Python de DynamoDB y Redis con configuración inyectable.
 4. `GET /api/v1/health` a través de API Gateway + Lambda, si está soportado.
@@ -29,3 +29,7 @@ Entorno local reproducible para DynamoDB, Lambda, API Gateway y Redis sin utiliz
 
 ## Bloqueos
 Sin soporte verificado de transacciones condicionales no iniciar aceptación competitiva. Si falla API Gateway/Lambda, documentar sustituto temporal solo para pruebas de dominio, sin afirmar cumplimiento del requisito.
+
+## Ajuste de estructura solicitado
+
+Adoptar `app/infra/{app.py,stack.py}`, `app/lambdas/<funcionalidad>/handler.py`, `app/layers/dependencias/requirements.txt`, `app/requirements.txt`, `app/cdk.json` y `app/tests/conftest.py` como el ejemplo del curso. Los unitarios usan moto/fakeredis sin infraestructura; las integraciones se ejecutan con selección explícita. Detalles y comandos en [entorno local](../ENTORNO_LOCAL.md).

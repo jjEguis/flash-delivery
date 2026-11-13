@@ -1,4 +1,0 @@
--c requirements-dev.lock
--r backend/requirements.txt
-pytest==9.0.2
--r infrastructure/cdk/requirements.txt
