@@ -1,122 +1,105 @@
 # FlashDelivery
 
-Aplicación de entregas de última milla con DynamoDB, Redis, Python, Lambda y API Gateway. La infraestructura y el modelo de persistencia están implementados. Los endpoints y casos de uso de negocio siguen pendientes.
+Aplicación de entregas de última milla con DynamoDB (tabla única), Redis, Python, Lambda y API Gateway, ejecutada localmente sobre MiniStack. Los comercios publican pedidos, los repartidores de la zona compiten por aceptarlos y una transacción condicional garantiza que solo uno gane. El destinatario sigue su pedido con un enlace seguro.
 
-Estructura del proyecto:
+Estado: SPEC-00 a SPEC-06 implementadas, con API HTTP completa (27 operaciones), interfaz web y evidencias de calidad. Consultar [especificaciones](docs/specs/README.md) y [validación](docs/validation.md).
 
 ```text
 flash-delivery/
-├── docker-compose.yml
+├── docker-compose.yml            # cdk-dev, MiniStack, Redis y web
 ├── Dockerfile
 ├── .env.example
 ├── app/
-│   ├── cdk.json
-│   ├── requirements.txt
-│   ├── requirements.lock
-│   ├── infra/
-│   │   ├── app.py
-│   │   └── stack.py
-│   ├── layers/dependencias/
-│   │   ├── requirements.txt
-│   │   └── requirements.lock
+│   ├── infra/                    # stack CDK y registro único de rutas (routes.py)
 │   ├── lambdas/
-│   │   ├── health/handler.py
-│   │   ├── readiness/handler.py
-│   │   ├── shared/                  # configuración, adaptadores y caché
-│   │   └── orders/, stores/, ...    # repositorios; casos de uso pendientes
-│   ├── tests/
-│   │   ├── conftest.py              # moto y fakeredis, por prueba
-│   │   ├── test_cache.py
-│   │   ├── test_dynamodb.py
-│   │   ├── test_health.py
-│   │   ├── test_unit.py
-│   │   ├── test_cdk.py
-│   │   └── integration/test_services.py
-│   └── scripts/                    # paquete, provisionamiento y persistencia
-├── docs/
-│   └── specs/
-└── frontend/                       # posterior
+│   │   ├── identity/             # tokens de desarrollo y dev-login
+│   │   ├── stores/  couriers/    # perfiles, zonas, habilitación, disponibilidad
+│   │   ├── orders/               # crear, consultar y listar pedidos
+│   │   ├── dispatch/             # aceptar, recoger, entregar, cancelar, FAILED
+│   │   ├── availability/         # presencia en Redis (heartbeat + ZSET)
+│   │   ├── tracking/             # seguimiento público por token
+│   │   ├── analytics/            # estadística mensual con Cache-Aside
+│   │   └── shared/               # HTTP, errores, almacenamiento, transacciones
+│   ├── tests/                    # unitarios moto/fakeredis
+│   │   └── integration/          # MiniStack y Redis reales, HTTP y concurrencia
+│   └── scripts/                  # provision, seed, demo, benchmark
+├── docs/                         # arquitectura, modelo, OpenAPI, specs, evidencias
+└── frontend/                     # SPA sin dependencias + servidor con proxy
 ```
 
-Los handlers exponen `main(event, context)`. Cada funcionalidad concentra su persistencia y sus futuros casos de uso dentro de `app/lambdas/<módulo>/`.
+Cada módulo de `app/lambdas/<módulo>/` contiene su repositorio, su servicio de aplicación y un `handler.py` con `main(event, context)`, que se despliega como una Lambda propia.
 
-## Inicio con Docker
+## Inicio rápido
 
-Requisitos: Docker Engine y Compose v2. No necesitas cuenta ni credenciales AWS reales. Los tres servicios son cdk-dev, MiniStack 1.5.36 y Redis 7.4.2-alpine; cdk-dev incluye Python 3.12 y Node 22.
+Requisitos: Docker Engine con Compose v2. No necesitas cuenta ni credenciales AWS.
 
 ```bash
 cp -n .env.example .env
 docker compose up -d --build --wait
 docker compose exec -T cdk-dev python -m scripts.provision
+docker compose exec -T cdk-dev python -m scripts.demo
 ```
 
-Si tu UID/GID no es 1000, configura `DEV_UID` y `DEV_GID` en `.env`. Los puertos predeterminados del host son 4566 y 6379, publicados solo en loopback. Dentro de Compose los endpoints son `http://ministack:4566` y `redis:6379`.
+Abre http://127.0.0.1:8080 y entra como:
+
+| Rol | Usuario | Qué puedes hacer |
+| --- | --- | --- |
+| Comercio | `tienda_demo` | Publicar pedidos, verlos por estado, cancelar, compartir el enlace de seguimiento, ver estadísticas y repartidores conectados |
+| Repartidor | `rep_demo1`, `rep_demo2`, `rep_demo3` | Conectarse, aceptar pedidos de la zona, recogerlos y entregarlos |
+| Administración | `admin`, código `admin-local` | Habilitar comercios y repartidores, consultar pedidos, marcar FAILED |
+
+Cualquier otro usuario puede registrarse como comercio o repartidor; queda pendiente hasta que un administrador lo habilite. El inicio de sesión es un adaptador de desarrollo con tokens HMAC, no apto para producción. Para ver la competencia entre repartidores, abre dos navegadores (o uno en modo incógnito) con repartidores distintos y acepta el mismo pedido.
+
+Si tu UID/GID no es 1000, configura `DEV_UID` y `DEV_GID` en `.env`. Los puertos del host (4566, 6379 y 8080) se publican solo en loopback.
+
+## API
+
+Contrato completo en [`docs/api/openapi.json`](docs/api/openapi.json). El frontend la sirve en el mismo origen (`http://127.0.0.1:8080/api/v1/...`); directamente en MiniStack la base es `http://127.0.0.1:4566/_aws/execute-api/<ApiId>/local`, con `ApiId` en `app/.local/outputs.json`.
+
+```bash
+TOKEN=$(curl -s -X POST localhost:8080/api/v1/auth/dev-login -H 'Content-Type: application/json' \
+  -d '{"userId":"tienda_demo","role":"STORE"}' | python -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+curl -s -X POST localhost:8080/api/v1/orders -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: pedido-1' \
+  -H 'Content-Type: application/json' -d '{"pickupAddress":"Calle 1","dropoffAddress":"Calle 2","feeMinor":8000}'
+```
+
+- Las escrituras de negocio exigen `Idempotency-Key`: repetirla con el mismo cuerpo devuelve el mismo resultado; con otro cuerpo responde 409 `IDEMPOTENCY_CONFLICT`.
+- Errores: `{"error": {"code", "message", "requestId"}}` con 400/401/403/404/409/429/500/503.
+- Listados paginados con `limit` (1–100) y `nextCursor` opaco.
 
 ## Tests
 
-Los unitarios se ejecutan dentro de cdk-dev sin usar el emulador ni Redis real:
+```bash
+# Unitarios (moto/fakeredis, sin red):
+docker compose exec -T cdk-dev python -m pytest tests/ -q
+# Integración (requiere provision):
+docker compose exec -T cdk-dev python -m pytest tests/ -m integration -q
+# Todo:
+docker compose exec -T cdk-dev python -m pytest tests/ -m 'integration or not integration' -q
+```
+
+La integración cubre API Gateway → Lambda empaquetada → DynamoDB/Redis con el ciclo completo de un pedido y 100 aceptaciones concurrentes con un único ganador. GitHub Actions ejecuta los unitarios en cada PR hacia develop.
+
+## Rendimiento y evidencias
 
 ```bash
-docker compose exec -T cdk-dev python -m pytest tests/ -v
-# También pueden correr sin arrancar los servicios de datos:
-docker compose run --rm --no-deps cdk-dev python -m pytest tests/ -v
+docker compose exec -T cdk-dev python -m scripts.benchmark --orders 10000
 ```
 
-Los fixtures de moto/fakeredis viven en `app/tests/conftest.py`. El acceso de red de los tests unitarios está bloqueado. No se borran variables del entorno durante la importación de conftest: los cambios de cada fixture se restauran al terminar.
+Carga pedidos sintéticos y mide los patrones de acceso frente a un Scan, la caché de Redis, la concurrencia y la API; resultados y límites del emulador en el [informe de calidad](docs/informe-calidad.md).
 
-Las integraciones son explícitas y requieren provisionamiento:
+## Modelo de datos
+
+Tabla `FlashDeliveryTable` con `PK`/`SK` y dos GSI dispersos; doce patrones de acceso (AP01–AP12) resueltos con GetItem o Query, sin Scan. Detalle en [modelo de datos](docs/data-model/README.md) y [arquitectura](docs/ARQUITECTURA_GENERAL.md).
 
 ```bash
-docker compose exec -T cdk-dev python -m pytest tests/ -m integration -v
-# Suite completa:
-docker compose exec -T cdk-dev python -m pytest tests/ -m 'integration or not integration' -v
+docker compose exec -T cdk-dev python -m scripts.seed_data --namespace SEED_demo          # datos sintéticos
+docker compose exec -T cdk-dev python -m scripts.seed_data --namespace SEED_demo --clean  # limpieza por claves
+docker compose exec -T cdk-dev python -m scripts.demo --clean                             # quitar perfiles demo
 ```
-
-GitHub Actions ejecuta los tests unitarios en cada PR hacia develop y push a feature. Las integraciones locales verifican DynamoDB, GSIs, commit/rollback, Redis, contenido del ZIP y API Gateway → Lambda. Usan marcadores UUID y limpian únicamente sus datos.
-
-## API local
-
-El provisionamiento guarda `ApiId`, URLs y clave del ZIP en `app/.local/outputs.json`. Desde el host, la base es:
-
-```text
-http://127.0.0.1:4566/_aws/execute-api/<ApiId>/local
-```
-
-- `GET /health` y `GET /api/v1/health`: sonda de ejecución.
-- `GET /api/v1/ready`: comprueba DynamoDB y Redis desde la Lambda empaquetada; devuelve 200 o 503.
-
-Las URLs del archivo de outputs generado dentro de cdk-dev usan el nombre de servicio `ministack`; para llamarlas desde el host usar `127.0.0.1` y el puerto publicado.
-
-## Alternativa desde el host
-
-```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r app/requirements.txt
-cd app
-JSII_RUNTIME_PACKAGE_CACHE=disabled ../.venv/bin/python -m scripts.provision
-../.venv/bin/python -m pytest tests/ -v
-# Reinicia MiniStack/Redis y verifica marcadores de persistencia:
-../.venv/bin/python -m scripts.check_persistence
-```
-
-`python -m infra.app`, ejecutado en app/, sintetiza la infraestructura sin red. Para desplegar usar scripts.provision: instala las dependencias runtime del directorio layers, publica el ZIP en S3 local y aplica la plantilla CDK con CloudFormation. La síntesis aislada usa una clave de paquete de ejemplo que no debe desplegarse directamente.
 
 ## Persistencia y límites
 
-Compose usa volúmenes para ambos almacenes y AOF para Redis. `docker compose stop` y `docker compose down` conservan volúmenes. `docker compose down --volumes` borra los datos locales y requiere reprovisionar.
-
-Se utiliza MiniStack con provisionamiento CloudFormation local, sin bootstrap CDK. Ningún contenedor monta el socket Docker ni se conecta a AWS real. El apagado ordenado fue probado; un corte abrupto y la concurrencia de negocio siguen fuera de esa evidencia.
+Compose usa volúmenes para MiniStack y Redis (AOF). `docker compose down` conserva los datos; `docker compose down --volumes` los borra y exige reprovisionar. Ningún contenedor se conecta a AWS real ni monta el socket Docker. MiniStack no reproduce el rendimiento ni la consistencia eventual exactos de DynamoDB; ver el informe de calidad.
 
 Documentación: [arquitectura](docs/ARQUITECTURA_GENERAL.md), [entorno y tests](docs/ENTORNO_LOCAL.md), [especificaciones](docs/specs/README.md), [plan](docs/PLAN_DE_TRABAJO.md) y [evidencias](docs/validation.md).
-
-## Modelo de datos y seed
-
-La tabla única tiene PK/SK y dos GSIs dispersos. Los repositorios cubren AP01–AP12 con lecturas por clave, rangos de fecha y cursores; el seguimiento usa ID más secreto verificable por hash. Detalle en [modelo de datos](docs/data-model/README.md) y [SPEC-01](docs/specs/SPEC-01-DYNAMODB.md).
-
-```bash
-docker compose exec -T cdk-dev python -m scripts.seed_data --namespace SEED_demo
-# Eliminar únicamente los datos sintéticos de ese namespace:
-docker compose exec -T cdk-dev python -m scripts.seed_data --namespace SEED_demo --clean
-```
-
-El seed reinicia sus propios datos al repetirse; no se debe usar su namespace para datos de la aplicación. Presencia Redis dura 60 segundos. No se añaden endpoints de negocio en SPEC-01.

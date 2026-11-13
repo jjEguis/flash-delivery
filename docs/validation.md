@@ -1,5 +1,14 @@
 # Registro de validación
 
+## Frontend — 2026-11-13
+
+SPA sin dependencias en `frontend/` servida por `web` (proxy same-origin hacia API Gateway). Verificada en el navegador integrado contra MiniStack:
+- Comercio `tienda_demo`: publicó un pedido (tras corregir el `step` del campo de tarifa y el patrón del usuario, que el navegador rechazaba), y abrió el detalle con su historial y enlace de seguimiento.
+- Repartidor `rep_demo1`: quedó conectado (heartbeat), aceptó, recogió y entregó.
+- Seguimiento público: mostró los cuatro pasos sin direcciones.
+- Comercio otra vez: estadística «1 entregado, $9.500 Desde DynamoDB» y, al repetir la consulta, «Desde Redis».
+- Modo claro y vista de 375 px de ancho sin desbordes horizontales; modo oscuro según el sistema.
+
 ## SPEC-06 — calidad y rendimiento — 2026-11-13
 
 | Comprobación ejecutada | Resultado |
