@@ -39,6 +39,24 @@ def _replay(repo, scope, request_id, digest):
     return record["result"]
 
 
+def commit(adapter, pairs):
+    """Confirma acciones sin registro idempotente (p. ej. altas y cambios de perfil
+    naturalmente idempotentes o condicionados por versión) y traduce sus condiciones."""
+    try:
+        adapter.transact_write_items([action for action, _ in pairs])
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") != "TransactionCanceledException":
+            raise DependencyUnavailableError("DynamoDB no está disponible") from exc
+        reasons = [reason.get("Code") for reason in exc.response.get("CancellationReasons") or []]
+        for index, code in enumerate(reasons):
+            if code == "ConditionalCheckFailed" and index < len(pairs) and pairs[index][1] is not None:
+                raise pairs[index][1] from None
+        raise ConflictError("El recurso cambió mientras se procesaba; vuelve a intentarlo",
+                            "CONCURRENT_UPDATE") from None
+    except BotoCoreError as exc:
+        raise DependencyUnavailableError("DynamoDB no está disponible") from exc
+
+
 def run_command(adapter, *, actor_id, operation, request_id, payload, build, now):
     """Ejecuta `build` y confirma sus acciones junto con el registro idempotente."""
     try:

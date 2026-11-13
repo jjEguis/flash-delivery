@@ -7,7 +7,9 @@ from lambdas.identity.contracts import ActorContext, authorize
 from lambdas.orders.repository import OrdersRepository, order_event, order_meta, store_status_view
 from lambdas.shared import clock
 from lambdas.shared.exceptions import ConflictError, ForbiddenError, NotFoundError, ValidationError
+from lambdas.shared.storage import keys
 from lambdas.shared.storage.model import make_item
+from lambdas.shared.storage.repository import page_dto
 from lambdas.shared.storage.transactions import run_command
 from lambdas.stores.repository import StoresRepository
 from lambdas.tracking.tokens import issue_token
@@ -101,6 +103,42 @@ def create_order(adapter, actor: ActorContext, *, request_id, pickup_address, dr
     order = load_order(adapter, result["orderId"])
     token, _ = issue_token(order["orderId"])
     return {**order_view(order, detail=True), "trackingToken": token}
+
+
+def summary_view(item):
+    """Fila de listado (META del GSI1 o vista de estado del GSI2) sin dirección de destino."""
+    return order_view(item, detail=False)
+
+
+def list_store_orders(adapter, actor: ActorContext, page, *, status=None):
+    """AP05 (todos por fecha, GSI1) o AP06 (por estado, GSI2); más recientes primero."""
+    authorize(actor, "STORE")
+    repo = OrdersRepository(adapter)
+    if status:
+        try:
+            keys.status(status)
+        except ValueError as exc:
+            raise ValidationError("status inválido") from exc
+        return page_dto(lambda: repo.list_store_orders_by_status(actor.store_id, status, **page), summary_view)
+    return page_dto(lambda: repo.list_store_orders(actor.store_id, **page), summary_view)
+
+
+def list_open_orders(adapter, zone_id, page):
+    """AP08: ofertas abiertas de la zona (GSI2 disperso, más antiguas primero).
+
+    El llamador verifica que el repartidor pertenezca a la zona. Lectura eventual: la
+    aceptación revalida el estado en la tabla base."""
+    repo = OrdersRepository(adapter)
+    return page_dto(lambda: repo.list_open_orders(zone_id, **page), summary_view)
+
+
+def list_events(adapter, actor: ActorContext, order_id, page):
+    order = load_order(adapter, order_id)
+    if not can_read(actor, order):
+        raise NotFoundError("Pedido no encontrado", "ORDER_NOT_FOUND")
+    repo = OrdersRepository(adapter)
+    return page_dto(lambda: repo.list_events(order_id, **page),
+                    lambda event: {"eventType": event["eventType"], "occurredAt": event["occurredAt"]})
 
 
 def fields(item):

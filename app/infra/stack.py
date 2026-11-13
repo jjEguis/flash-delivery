@@ -1,9 +1,23 @@
 """Síntesis sin lookup ni bootstrap CDK; paquete publicado por scripts.provision."""
+import os
+
 from aws_cdk import Stack, CfnOutput, RemovalPolicy, BootstraplessSynthesizer
 from aws_cdk import aws_dynamodb as dynamodb, aws_lambda as lambda_, aws_iam as iam
 from aws_cdk import aws_apigatewayv2 as apigw
 from lambdas.shared.config.settings import ROOT, Settings
 from scripts.package_lambda import ASSET_BUCKET
+from infra.routes import ROUTES
+
+# Variables de negocio de las Lambdas; los valores por defecto solo sirven en local.
+LAMBDA_ENV = {
+    "DEV_AUTH_SECRET": "flashdelivery-local-dev-auth",
+    "DEV_ADMIN_CODE": "admin-local",
+    "TRACKING_TOKEN_KEY": "flashdelivery-local-tracking-key",
+    "ZONES": "centro:Centro,norte:Norte,sur:Sur,oriente:Oriente,occidente:Occidente",
+    "RATE_LIMIT_PER_MINUTE": "120",
+    "REDIS_TTL": "300",
+    "PRESENCE_TTL_SECONDS": "60",
+}
 
 
 class FlashDeliveryStack(Stack):
@@ -60,5 +74,36 @@ class FlashDeliveryStack(Stack):
             lambda_.CfnPermission(stack, name + "Permission", action="lambda:InvokeFunction",
                 function_name=target_function.ref, principal="apigateway.amazonaws.com",
                 source_arn=f"arn:aws:execute-api:{settings.region}:000000000000:{api.ref}/*/GET{path}")
+        # Una Lambda por módulo implementado; rutas desde el registro único (infra/routes.py).
+        environment = {
+            "ENVIRONMENT": "local", "AWS_ENDPOINT_URL": "http://ministack:4566",
+            "AWS_EC2_METADATA_DISABLED": "true", "DYNAMODB_TABLE_NAME": settings.table_name,
+            "REDIS_HOST": "redis", "REDIS_PORT": "6379",
+            "CONNECT_TIMEOUT": str(settings.connect_timeout), "READ_TIMEOUT": str(settings.read_timeout),
+        }
+        for name in LAMBDA_ENV:
+            environment[name] = os.getenv(name, LAMBDA_ENV[name])
+        for module, routes in ROUTES.items():
+            if not (ROOT / "lambdas" / module / "handler.py").exists():
+                continue
+            title = module.capitalize()
+            module_role = iam.Role(stack, title + "Role", assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"))
+            table.grant_read_write_data(module_role)
+            module_function = lambda_.CfnFunction(stack, title + "Function", function_name=f"flashdelivery-{module}",
+                runtime="python3.12", handler=f"lambdas.{module}.handler.main", role=module_role.role_arn,
+                code=lambda_.CfnFunction.CodeProperty(s3_bucket=ASSET_BUCKET, s3_key=package_key),
+                environment=lambda_.CfnFunction.EnvironmentProperty(variables=dict(environment)),
+                timeout=20, memory_size=256)
+            module_integration = apigw.CfnIntegration(stack, title + "Integration", api_id=api.ref,
+                integration_type="AWS_PROXY", integration_uri=module_function.attr_arn,
+                integration_method="POST", payload_format_version="2.0")
+            for index, route_key in enumerate(routes):
+                method, path = route_key.split(" ", 1)
+                module_route = apigw.CfnRoute(stack, f"{title}Route{index}", api_id=api.ref, route_key=route_key,
+                    target="integrations/" + module_integration.ref)
+                stage.add_dependency(module_route)
+            lambda_.CfnPermission(stack, title + "Permission", action="lambda:InvokeFunction",
+                function_name=module_function.ref, principal="apigateway.amazonaws.com",
+                source_arn=f"arn:aws:execute-api:{settings.region}:000000000000:{api.ref}/*/*/api/v1/*")
         CfnOutput(stack, "ApiId", value=api.ref)
         CfnOutput(stack, "TableName", value=table.table_name)

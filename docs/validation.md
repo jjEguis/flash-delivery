@@ -1,5 +1,16 @@
 # Registro de validación
 
+## SPEC-04 — primer flujo vertical por HTTP — 2026-11-13
+
+Lambdas `flashdelivery-identity`, `-stores`, `-couriers` y `-orders` desplegadas desde el ZIP con `scripts.provision`; rutas de API Gateway generadas desde `infra/routes.py`.
+
+| Comprobación ejecutada | Resultado |
+| --- | --- |
+| Prueba de humo HTTP contra el gateway de MiniStack | Zonas, dev-login, alta y habilitación de comercio, creación con token, detalle, listado y 401 correctos; MiniStack entrega `pathParameters` y `rawPath` sin prefijo de etapa |
+| `tests/test_http_base_flow.py` | **6 passed** |
+| `tests/integration/test_api_flow.py` | **1 passed** (flujo completo por HTTP) |
+| Suite completa desde cdk-dev | **110 passed**, 50.1 s |
+
 ## SPEC-03 — contratos, API y autorización — 2026-11-13
 
 Contrato HTTP v1 en `docs/api/openapi.json` (27 operaciones), registro único de rutas en `app/infra/routes.py`, identidad local con tokens HMAC y capa HTTP compartida (`shared/http.py`). `docker-compose.yml` monta `docs/` en solo lectura dentro de cdk-dev para que las pruebas de contrato lean el OpenAPI.
