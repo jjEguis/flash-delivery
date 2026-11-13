@@ -1,0 +1,67 @@
+services:
+  cdk-dev:
+    build: .
+    profiles: [dev]
+    working_dir: /workspace
+    user: "${DEV_UID:-1000}:${DEV_GID:-1000}"
+    volumes:
+      - .:/workspace
+    environment:
+      HOME: /tmp
+      IN_CDK_DEV: "1"
+      ENVIRONMENT: local
+      AWS_ENDPOINT_URL: http://ministack:4566
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_EC2_METADATA_DISABLED: "true"
+      DYNAMODB_TABLE_NAME: ${DYNAMODB_TABLE_NAME:-FlashDeliveryTable}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    networks: [local]
+    depends_on:
+      ministack:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+  ministack:
+    image: ${MINISTACK_IMAGE:-ministackorg/ministack:1.5.36}
+    ports:
+      - "127.0.0.1:${MINISTACK_PORT:-4566}:4566"
+    environment:
+      GATEWAY_PORT: "4566"
+      MINISTACK_REGION: ${AWS_REGION:-us-east-1}
+      MINISTACK_ACCOUNT_ID: "000000000000"
+      PERSIST_STATE: "1"
+      STATE_DIR: /data/state
+      LAMBDA_EXECUTOR: local
+    volumes:
+      - ministack-data:/data
+    networks: [local]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4566/_ministack/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    stop_grace_period: 30s
+  redis:
+    image: ${REDIS_IMAGE:-redis:7.4.2-alpine}
+    command: [redis-server, --appendonly, 'yes']
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    networks: [local]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    stop_grace_period: 15s
+networks:
+  local:
+    driver: bridge
+volumes:
+  ministack-data:
+  redis-data:
