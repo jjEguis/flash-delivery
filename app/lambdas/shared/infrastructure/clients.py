@@ -24,6 +24,23 @@ def redis_client(settings=None):
                  socket_timeout=settings.read_timeout, decode_responses=True)
 
 
+_SHARED = {}
+
+
+def shared_adapter():
+    """Adaptador reutilizado entre invocaciones de una misma Lambda caliente (lazy)."""
+    if "adapter" not in _SHARED:
+        _SHARED["adapter"] = DynamoDBAdapter()
+    return _SHARED["adapter"]
+
+
+def shared_redis():
+    """Cliente Redis reutilizado entre invocaciones; redis-py reconecta si se cae."""
+    if "redis" not in _SHARED:
+        _SHARED["redis"] = redis_client()
+    return _SHARED["redis"]
+
+
 class DynamoDBAdapter:
     """API de infraestructura con formato AttributeValue de DynamoDB.
 

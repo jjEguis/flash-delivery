@@ -1,5 +1,14 @@
 # Registro de validación
 
+## SPEC-03 — contratos, API y autorización — 2026-11-13
+
+Contrato HTTP v1 en `docs/api/openapi.json` (27 operaciones), registro único de rutas en `app/infra/routes.py`, identidad local con tokens HMAC y capa HTTP compartida (`shared/http.py`). `docker-compose.yml` monta `docs/` en solo lectura dentro de cdk-dev para que las pruebas de contrato lean el OpenAPI.
+
+| Comprobación ejecutada | Resultado |
+| --- | --- |
+| `tests/test_api_contract.py` | **13 passed**: OpenAPI = registro de rutas, `$ref` resueltos, seguridad por operación, tokens, errores, límite de solicitudes |
+| CI de GitHub Actions del PR de SPEC-02 | Correcto; PR fusionado en develop con autorización del usuario |
+
 ## SPEC-02 — transacciones, estados e idempotencia — 2026-11-13
 
 Implementados los comandos T1–T5 y el procedimiento excepcional FAILED como casos de uso, sin HTTP: `orders.service.create_order`, `dispatch.service.accept_order`, `pick_up_order`, `deliver_order`, `cancel_order` y `fail_order`. Cada uno lee con consistencia fuerte, valida reglas para responder errores claros y confirma META, evento, vistas, ACTIVE, agregado y registro idempotente en un único `TransactWriteItems` mediante `shared/storage/transactions.run_command`.
