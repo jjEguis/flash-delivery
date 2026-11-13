@@ -77,7 +77,7 @@ class Request:
 def response(status, body, request_id):
     return {"statusCode": status, "headers": {
         "Content-Type": "application/json", "Cache-Control": "no-store", "X-Request-Id": request_id},
-        "body": json.dumps(body, ensure_ascii=False)}
+        "body": "" if body is None else json.dumps(body, ensure_ascii=False)}
 
 
 def error_body(code, message, request_id):

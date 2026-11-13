@@ -64,5 +64,20 @@ class Api:
                                    ExpressionAttributeValues=serialize({":pk": keys.order(order_id), ":e": "EVENT#"}))
             doomed += [{"PK": e["PK"]["S"], "SK": e["SK"]["S"]} for e in events["Items"]]
         doomed += [keys.request(keys.request_scope(a, op), r) for a, op, r in self.created["requests"]]
+        from lambdas.shared import clock
+        month = clock.month_of(clock.now())
+        doomed += [keys.stats(s, month) for s in self.created["stores"]]
         for key in doomed:
             adapter.client.delete_item(TableName=adapter.settings.table_name, Key=serialize(key))
+        from lambdas.availability.repository import heartbeat_key, zone_key
+        from lambdas.analytics.service import cache_key
+        from lambdas.shared.infrastructure.clients import redis_client
+        cache = redis_client()
+        try:
+            for c in self.created["couriers"]:
+                cache.delete(heartbeat_key(c))
+                cache.zrem(zone_key("centro"), c)
+            for s in self.created["stores"]:
+                cache.delete(cache_key(s, month))
+        finally:
+            cache.close()
