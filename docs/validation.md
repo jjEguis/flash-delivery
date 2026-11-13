@@ -1,5 +1,15 @@
 # Registro de validación
 
+## SPEC-06 — calidad y rendimiento — 2026-11-13
+
+| Comprobación ejecutada | Resultado |
+| --- | --- |
+| `python -m scripts.benchmark --orders 10000 --samples 100` | Correcto; [informe](informe-calidad.md) y [datos](evidencias/benchmark-10k.json) |
+| Query AP05 frente a Scan equivalente | 25 frente a 20 017 ítems leídos; p50 349 ms frente a 1 444 ms en MiniStack |
+| Caché de estadísticas | miss p50 2,36 ms, hit p50 0,17 ms, TTL 300 s |
+| 100 aceptaciones concurrentes | 1 ganador, 99 × 409 `ORDER_ALREADY_ASSIGNED` |
+| Suite completa | 115 passed |
+
 ## SPEC-05 — Dispatch, Availability, Tracking y Analytics — 2026-11-13
 
 Lambdas `flashdelivery-dispatch`, `-availability`, `-tracking` y `-analytics` desplegadas; las 27 operaciones del OpenAPI quedan servidas por API Gateway.
