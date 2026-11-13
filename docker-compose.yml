@@ -59,6 +59,24 @@ services:
       timeout: 3s
       retries: 10
     stop_grace_period: 15s
+  web:
+    image: ${WEB_IMAGE:-python:3.12-slim-bookworm}
+    command: [python, /frontend/server.py]
+    working_dir: /frontend
+    user: "${DEV_UID:-1000}:${DEV_GID:-1000}"
+    environment:
+      API_UPSTREAM: http://ministack:4566
+      OUTPUTS_FILE: /outputs/outputs.json
+      PORT: "8080"
+    volumes:
+      - ./frontend:/frontend:ro
+      - ./app/.local:/outputs:ro
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:8080"
+    networks: [local]
+    depends_on:
+      ministack:
+        condition: service_healthy
 networks:
   local:
     driver: bridge

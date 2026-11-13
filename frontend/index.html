@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FlashDelivery</title>
+  <meta name="description" content="Entregas de última milla: comercios, repartidores y seguimiento.">
+  <meta name="theme-color" content="#0B2530">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <a class="skip" href="#app">Saltar al contenido</a>
+  <header class="hdr">
+    <div class="hdr__in">
+      <a class="brand" href="#/">FlashDelivery</a>
+      <nav class="hdr__nav" id="nav"></nav>
+    </div>
+  </header>
+  <main id="app" tabindex="-1"></main>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <footer class="ftr">
+    <div class="ftr__in">
+      <span>FlashDelivery · entorno local con MiniStack y Redis</span>
+      <span>DynamoDB tabla única · API Gateway · Lambda</span>
+    </div>
+  </footer>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
