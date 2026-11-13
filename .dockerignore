@@ -1,0 +1,8 @@
+.git
+.env
+.venv
+.local
+cdk.out
+__pycache__
+.pytest_cache
+FlashDelivery_*.zip
