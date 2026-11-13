@@ -1,5 +1,24 @@
 # Registro de validación
 
+## Reorganización según el ejemplo del curso — 2026-11-12
+
+Revisado nuevamente `bd_no_sql` en el commit `835ada8aa75f243b8bc2f5a80fa8cd37519ea5f8`, incluyendo fixtures y tests de caché. La estructura actual es `app/infra`, `app/lambdas`, `app/layers/dependencias`, `app/tests` y `app/scripts`. Los comandos de apartados anteriores corresponden al historial de la organización previa; usar los del README y [guía local](ENTORNO_LOCAL.md).
+
+| Comprobación ejecutada | Resultado |
+| --- | --- |
+| `docker compose up -d --build --wait` | Tres contenedores activos; app montada en `/app`; dependencias de tests fijadas |
+| `python -m scripts.provision` desde cdk-dev | Despliegue actualizado con `main` y nuevo ZIP lambdas/; tabla e API conservadas |
+| Unitarios con `docker run --network none` y app montada | **24 passed, 10 deselected**, 4.69 s; sin red y sin acceso a los servicios de datos |
+| Unitarios moto ejecutados antes de integraciones, mismo proceso | **15 passed**, 0.91 s; los fixtures restauran el entorno y las integraciones siguen funcionando |
+| Suite completa desde cdk-dev con el lock definitivo | **34 passed**, 5.20 s: 24 unitarios y 10 integraciones |
+| Persistencia desde `app/scripts` y nueva ejecución de integraciones sin reprovisionar | Marcadores conservados y limpiados; integraciones aprobadas después del reinicio |
+| `python -m pip check` | No broken requirements found |
+| compileall, Compose config, enlaces Markdown y diff check | Correctos |
+
+Nuevas pruebas: cache JSON/miss/TTL/delete/Redis caído, health con moto/fakeredis, consultas GSI y rollback en moto, bloqueo de acceso a otra tabla y contenido del ZIP sin dependencias de desarrollo. Los tests de integración reales anteriores se conservaron bajo `app/tests/integration`.
+
+Se añadió GitHub Actions para unitarios en ramas feature y PRs a develop; la ejecución remota se consulta en el PR. El comando normal `pytest tests/ -v` selecciona unitarios, como en el curso; seleccionar explícitamente `-m integration` para los reales.
+
 ## Incremento 0 — ejecución directa del 2026-11-12
 
 La siguiente evidencia corresponde a esta sesión, con MiniStack `1.5.36`, Redis `7.4.2-alpine` y cdk-dev Python 3.12/Node 22. Los apartados posteriores conservan el historial anterior y sus restricciones, que no describen esta ejecución.

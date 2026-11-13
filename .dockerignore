@@ -6,3 +6,8 @@ cdk.out
 __pycache__
 .pytest_cache
 FlashDelivery_*.zip
+
+**/.local
+**/cdk.out
+**/__pycache__
+**/.pytest_cache

@@ -1,11 +1,10 @@
 services:
   cdk-dev:
     build: .
-    profiles: [dev]
-    working_dir: /workspace
+    working_dir: /app
     user: "${DEV_UID:-1000}:${DEV_GID:-1000}"
     volumes:
-      - .:/workspace
+      - ./app:/app
     environment:
       HOME: /tmp
       IN_CDK_DEV: "1"

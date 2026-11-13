@@ -4,6 +4,8 @@ Fecha de revisión: 2026-11-12. Alcance de esta entrega: análisis y organizaci�
 
 **Actualización posterior:** incremento 0 implementado: cdk-dev, empaquetado ZIP/S3 local, rutas de salud y prueba de persistencia. Consultar [validación](validation.md) y [guía local](ENTORNO_LOCAL.md). El diagnóstico siguiente conserva el estado observado antes de ese incremento; el próximo trabajo corresponde a contratos y primer flujo de negocio.
 
+**Reorganización solicitada:** la implementación ahora sigue `app/infra`, `app/lambdas`, `app/layers/dependencias` y `app/tests` del curso; moto/fakeredis ejecutan los unitarios sin infraestructura. Las diferencias históricas del diagnóstico sobre rutas y cdk-dev ya se resolvieron. Las instrucciones vigentes están en el README y la guía local; la próxima SPEC es SPEC-01, modelo de ítems y accesos DynamoDB.
+
 ## 1. Panorama
 
 El dominio es adecuado para demostrar el stack del curso: comercios publican entregas, repartidores de una zona compiten por aceptarlas, un solo repartidor gana y completa el pedido. DynamoDB conserva el estado oficial y las transacciones; Redis aporta presencia temporal y caché Cache-Aside de estadísticas. El MVP excluye pagos, mapas en tiempo real y optimización de rutas.
