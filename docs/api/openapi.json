@@ -1,0 +1,239 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "FlashDelivery API",
+    "version": "1.0.0",
+    "description": "API v1 de FlashDelivery (SPEC-03). Entorno local con MiniStack: la autenticación es un adaptador de desarrollo con tokens HMAC, no apto para producción. Los IDs de comercio y repartidor coinciden con el actor autenticado (un perfil por usuario en el MVP). Las escrituras de negocio exigen Idempotency-Key: la misma clave con el mismo contenido devuelve el resultado previo; con otro contenido responde 409 IDEMPOTENCY_CONFLICT."
+  },
+  "servers": [{"url": "http://127.0.0.1:8080", "description": "Frontend local con proxy a API Gateway en MiniStack"}],
+  "security": [{"bearer": []}],
+  "tags": [
+    {"name": "identity"}, {"name": "stores"}, {"name": "couriers"}, {"name": "orders"},
+    {"name": "dispatch"}, {"name": "availability"}, {"name": "tracking"}, {"name": "analytics"}
+  ],
+  "paths": {
+    "/api/v1/auth/dev-login": {
+      "post": {
+        "tags": ["identity"], "summary": "Inicio de sesión de desarrollo (solo local)", "security": [],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DevLogin"}}}},
+        "responses": {"200": {"description": "Token firmado", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Session"}}}},
+                      "400": {"$ref": "#/components/responses/Error"}, "403": {"$ref": "#/components/responses/Error"}}
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "tags": ["identity"], "summary": "Actor de la sesión",
+        "responses": {"200": {"description": "Actor", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Actor"}}}},
+                      "401": {"$ref": "#/components/responses/Error"}}
+      }
+    },
+    "/api/v1/zones": {
+      "get": {
+        "tags": ["stores"], "summary": "Catálogo de zonas predefinidas", "security": [],
+        "responses": {"200": {"description": "Zonas", "content": {"application/json": {"schema": {"type": "object", "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/Zone"}}}}}}}}
+      }
+    },
+    "/api/v1/stores": {
+      "post": {
+        "tags": ["stores"], "summary": "Registrar mi comercio (queda pendiente de habilitación)",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ProfileInput"}}}},
+        "responses": {"201": {"description": "Comercio", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Store"}}}},
+                      "400": {"$ref": "#/components/responses/Error"}, "401": {"$ref": "#/components/responses/Error"},
+                      "403": {"$ref": "#/components/responses/Error"}, "409": {"$ref": "#/components/responses/Error"}}
+      }
+    },
+    "/api/v1/stores/me": {
+      "get": {
+        "tags": ["stores"], "summary": "Mi comercio",
+        "responses": {"200": {"description": "Comercio", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Store"}}}},
+                      "401": {"$ref": "#/components/responses/Error"}, "403": {"$ref": "#/components/responses/Error"}, "404": {"$ref": "#/components/responses/Error"}}
+      }
+    },
+    "/api/v1/admin/stores/{storeId}": {
+      "patch": {
+        "tags": ["stores"], "summary": "Habilitar o deshabilitar un comercio (ADMIN)",
+        "parameters": [{"name": "storeId", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/Id"}}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EnabledInput"}}}},
+        "responses": {"200": {"description": "Comercio", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Store"}}}},
+                      "401": {"$ref": "#/components/responses/Error"}, "403": {"$ref": "#/components/responses/Error"},
+                      "404": {"$ref": "#/components/responses/Error"}, "409": {"$ref": "#/components/responses/Error"}}
+      }
+    },
+    "/api/v1/couriers": {
+      "post": {
+        "tags": ["couriers"], "summary": "Registrar mi perfil de repartidor (pendiente de habilitación)",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ProfileInput"}}}},
+        "responses": {"201": {"description": "Repartidor", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Courier"}}}},
+                      "400": {"$ref": "#/components/responses/Error"}, "401": {"$ref": "#/components/responses/Error"},
+                      "403": {"$ref": "#/components/responses/Error"}, "409": {"$ref": "#/components/responses/Error"}}
+      }
+    },
+    "/api/v1/couriers/me": {
+      "get": {
+        "tags": ["couriers"], "summary": "Mi perfil de repartidor",
+        "responses": {"200": {"description": "Repartidor", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Courier"}}}},
+                      "401": {"$ref": "#/components/responses/Error"}, "403": {"$ref": "#/components/responses/Error"}, "404": {"$ref": "#/components/responses/Error"}}
+      }
+    },
+    "/api/v1/couriers/me/availability": {
+      "patch": {
+        "tags": ["couriers"], "summary": "Declarar disponibilidad (T6)",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["available"], "properties": {"available": {"type": "boolean"}}}}}},
+        "responses": {"200": {"description": "Repartidor", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Courier"}}}},
+                      "400": {"$ref": "#/components/responses/Error"}, "401": {"$ref": "#/components/responses/Error"},
+                      "403": {"$ref": "#/components/responses/Error"}, "404": {"$ref": "#/components/responses/Error"}, "409": {"$ref": "#/components/responses/Error"}}
+      }
+    },
+    "/api/v1/couriers/me/active": {
+      "get": {
+        "tags": ["couriers"], "summary": "Mi pedido activo (lectura fuerte de COURIER#id / ACTIVE)",
+        "responses": {"200": {"description": "Pedido activo o null", "content": {"application/json": {"schema": {"type": "object", "properties": {"order": {"nullable": true, "allOf": [{"$ref": "#/components/schemas/Order"}]}}}}}},
+                      "401": {"$ref": "#/components/responses/Error"}, "403": {"$ref": "#/components/responses/Error"}}
+      }
+    },
+    "/api/v1/couriers/me/orders": {
+      "get": {
+        "tags": ["couriers"], "summary": "Mi historial (GSI1, más reciente primero)",
+        "parameters": [{"$ref": "#/components/parameters/Limit"}, {"$ref": "#/components/parameters/Cursor"}],
+        "responses": {"200": {"description": "Página", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OrderPage"}}}},
+                      "400": {"$ref": "#/components/responses/Error"}, "401": {"$ref": "#/components/responses/Error"}, "403": {"$ref": "#/components/responses/Error"}}
+      }
+    },
+    "/api/v1/admin/couriers/{courierId}": {
+      "patch": {
+        "tags": ["couriers"], "summary": "Habilitar o deshabilitar un repartidor (ADMIN)",
+        "parameters": [{"name": "courierId", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/Id"}}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EnabledInput"}}}},
+        "responses": {"200": {"description": "Repartidor", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Courier"}}}},
+                      "401": {"$ref": "#/components/responses/Error"}, "403": {"$ref": "#/components/responses/Error"},
+                      "404": {"$ref": "#/components/responses/Error"}, "409": {"$ref": "#/components/responses/Error"}}
+      }
+    },
+    "/api/v1/orders": {
+      "post": {
+        "tags": ["orders"], "summary": "Crear pedido (T1). Devuelve el token de seguimiento.",
+        "parameters": [{"$ref": "#/components/parameters/IdempotencyKey"}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateOrder"}}}},
+        "responses": {"201": {"description": "Pedido creado (o resultado previo del mismo intento)", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreatedOrder"}}}},
+                      "400": {"$ref": "#/components/responses/Error"}, "401": {"$ref": "#/components/responses/Error"},
+                      "403": {"$ref": "#/components/responses/Error"}, "404": {"$ref": "#/components/responses/Error"},
+                      "409": {"$ref": "#/components/responses/Error"}, "429": {"$ref": "#/components/responses/Error"}, "503": {"$ref": "#/components/responses/Error"}}
+      }
+    },
+    "/api/v1/orders/available": {
+      "get": {
+        "tags": ["orders"], "summary": "Pedidos abiertos de una zona (GSI2 disperso, más antiguo primero)",
+        "parameters": [{"name": "zoneId", "in": "query", "required": true, "schema": {"$ref": "#/components/schemas/Id"}},
+                       {"$ref": "#/components/parameters/Limit"}, {"$ref": "#/components/parameters/Cursor"}],
+        "responses": {"200": {"description": "Página sin direcciones de destino", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OrderPage"}}}},
+                      "400": {"$ref": "#/components/responses/Error"}, "401": {"$ref": "#/components/responses/Error"}, "403": {"$ref": "#/components/responses/Error"}}
+      }
+    },
+    "/api/v1/orders/{orderId}": {
+      "get": {
+        "tags": ["orders"], "summary": "Detalle (comercio propietario, repartidor asignado o ADMIN)",
+        "parameters": [{"$ref": "#/components/parameters/OrderId"}],
+        "responses": {"200": {"description": "Pedido", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Order"}}}},
+                      "401": {"$ref": "#/components/responses/Error"}, "404": {"$ref": "#/components/responses/Error"}}
+      }
+    },
+    "/api/v1/orders/{orderId}/events": {
+      "get": {
+        "tags": ["orders"], "summary": "Historial de eventos del pedido",
+        "parameters": [{"$ref": "#/components/parameters/OrderId"}, {"$ref": "#/components/parameters/Limit"}, {"$ref": "#/components/parameters/Cursor"}],
+        "responses": {"200": {"description": "Página", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EventPage"}}}},
+                      "401": {"$ref": "#/components/responses/Error"}, "404": {"$ref": "#/components/responses/Error"}}
+      }
+    },
+    "/api/v1/stores/me/orders": {
+      "get": {
+        "tags": ["orders"], "summary": "Pedidos de mi comercio: todos por fecha (GSI1) o por estado (GSI2)",
+        "parameters": [{"name": "status", "in": "query", "required": false, "schema": {"$ref": "#/components/schemas/Status"}},
+                       {"$ref": "#/components/parameters/Limit"}, {"$ref": "#/components/parameters/Cursor"}],
+        "responses": {"200": {"description": "Página", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OrderPage"}}}},
+                      "400": {"$ref": "#/components/responses/Error"}, "401": {"$ref": "#/components/responses/Error"}, "403": {"$ref": "#/components/responses/Error"}}
+      }
+    },
+    "/api/v1/orders/{orderId}/accept": {"post": {"tags": ["dispatch"], "summary": "Aceptar pedido (T2): un solo ganador, los demás 409 ORDER_ALREADY_ASSIGNED", "parameters": [{"$ref": "#/components/parameters/OrderId"}, {"$ref": "#/components/parameters/IdempotencyKey"}], "responses": {"200": {"$ref": "#/components/responses/Transition"}, "400": {"$ref": "#/components/responses/Error"}, "401": {"$ref": "#/components/responses/Error"}, "403": {"$ref": "#/components/responses/Error"}, "404": {"$ref": "#/components/responses/Error"}, "409": {"$ref": "#/components/responses/Error"}}}},
+    "/api/v1/orders/{orderId}/pickup": {"post": {"tags": ["dispatch"], "summary": "Marcar recogido (T3, repartidor asignado)", "parameters": [{"$ref": "#/components/parameters/OrderId"}, {"$ref": "#/components/parameters/IdempotencyKey"}], "responses": {"200": {"$ref": "#/components/responses/Transition"}, "400": {"$ref": "#/components/responses/Error"}, "401": {"$ref": "#/components/responses/Error"}, "403": {"$ref": "#/components/responses/Error"}, "404": {"$ref": "#/components/responses/Error"}, "409": {"$ref": "#/components/responses/Error"}}}},
+    "/api/v1/orders/{orderId}/deliver": {"post": {"tags": ["dispatch"], "summary": "Marcar entregado (T4): libera ACTIVE y suma la estadística una vez", "parameters": [{"$ref": "#/components/parameters/OrderId"}, {"$ref": "#/components/parameters/IdempotencyKey"}], "responses": {"200": {"$ref": "#/components/responses/Transition"}, "400": {"$ref": "#/components/responses/Error"}, "401": {"$ref": "#/components/responses/Error"}, "403": {"$ref": "#/components/responses/Error"}, "404": {"$ref": "#/components/responses/Error"}, "409": {"$ref": "#/components/responses/Error"}}}},
+    "/api/v1/orders/{orderId}/cancel": {"post": {"tags": ["dispatch"], "summary": "Cancelar (T5, comercio propietario, PENDING o ASSIGNED)", "parameters": [{"$ref": "#/components/parameters/OrderId"}, {"$ref": "#/components/parameters/IdempotencyKey"}], "responses": {"200": {"$ref": "#/components/responses/Transition"}, "400": {"$ref": "#/components/responses/Error"}, "401": {"$ref": "#/components/responses/Error"}, "403": {"$ref": "#/components/responses/Error"}, "404": {"$ref": "#/components/responses/Error"}, "409": {"$ref": "#/components/responses/Error"}}}},
+    "/api/v1/orders/{orderId}/fail": {"post": {"tags": ["dispatch"], "summary": "Marcar fallido (procedimiento excepcional, ADMIN, desde PICKED_UP)", "parameters": [{"$ref": "#/components/parameters/OrderId"}, {"$ref": "#/components/parameters/IdempotencyKey"}], "responses": {"200": {"$ref": "#/components/responses/Transition"}, "400": {"$ref": "#/components/responses/Error"}, "401": {"$ref": "#/components/responses/Error"}, "403": {"$ref": "#/components/responses/Error"}, "404": {"$ref": "#/components/responses/Error"}, "409": {"$ref": "#/components/responses/Error"}}}},
+    "/api/v1/couriers/me/heartbeat": {
+      "post": {
+        "tags": ["availability"], "summary": "Heartbeat: presencia efímera en Redis (TTL 60 s)",
+        "responses": {"200": {"description": "Presencia", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Presence"}}}},
+                      "401": {"$ref": "#/components/responses/Error"}, "403": {"$ref": "#/components/responses/Error"},
+                      "404": {"$ref": "#/components/responses/Error"}, "409": {"$ref": "#/components/responses/Error"}, "503": {"$ref": "#/components/responses/Error"}}
+      },
+      "delete": {
+        "tags": ["availability"], "summary": "Salir de la presencia de la zona",
+        "responses": {"204": {"description": "Sin contenido"}, "401": {"$ref": "#/components/responses/Error"}, "403": {"$ref": "#/components/responses/Error"}, "503": {"$ref": "#/components/responses/Error"}}
+      }
+    },
+    "/api/v1/zones/{zoneId}/couriers": {
+      "get": {
+        "tags": ["availability"], "summary": "Repartidores con heartbeat vigente en la zona (comercio de la zona o ADMIN)",
+        "parameters": [{"name": "zoneId", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/Id"}},
+                       {"$ref": "#/components/parameters/Limit"}, {"$ref": "#/components/parameters/Cursor"}],
+        "responses": {"200": {"description": "Página", "content": {"application/json": {"schema": {"type": "object", "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/Presence"}}, "nextCursor": {"type": "string", "nullable": true}}}}}},
+                      "401": {"$ref": "#/components/responses/Error"}, "403": {"$ref": "#/components/responses/Error"}, "503": {"$ref": "#/components/responses/Error"}}
+      }
+    },
+    "/api/v1/tracking/{token}": {
+      "get": {
+        "tags": ["tracking"], "summary": "Seguimiento público por token: solo estado e hitos", "security": [],
+        "parameters": [{"name": "token", "in": "path", "required": true, "schema": {"type": "string", "maxLength": 257}},
+                       {"$ref": "#/components/parameters/Limit"}, {"$ref": "#/components/parameters/Cursor"}],
+        "responses": {"200": {"description": "Seguimiento", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Tracking"}}}},
+                      "404": {"$ref": "#/components/responses/Error"}}
+      }
+    },
+    "/api/v1/stores/me/stats": {
+      "get": {
+        "tags": ["analytics"], "summary": "Estadística mensual de mi comercio (Cache-Aside Redis)",
+        "parameters": [{"name": "month", "in": "query", "required": true, "schema": {"type": "string", "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"}}],
+        "responses": {"200": {"description": "Agregado", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Stats"}}}},
+                      "400": {"$ref": "#/components/responses/Error"}, "401": {"$ref": "#/components/responses/Error"}, "403": {"$ref": "#/components/responses/Error"}}
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {"bearer": {"type": "http", "scheme": "bearer", "description": "Token HMAC del adaptador de desarrollo"}},
+    "parameters": {
+      "IdempotencyKey": {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"$ref": "#/components/schemas/Id"}, "description": "Estable por intención; acotada por actor y operación"},
+      "Limit": {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 100, "default": 25}},
+      "Cursor": {"name": "cursor", "in": "query", "required": false, "schema": {"type": "string", "maxLength": 8192}, "description": "nextCursor opaco de la página anterior; ligado a la consulta"},
+      "OrderId": {"name": "orderId", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/Id"}}
+    },
+    "responses": {
+      "Error": {"description": "Error de dominio", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "Transition": {"description": "Pedido tras la transición", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Order"}}}}
+    },
+    "schemas": {
+      "Id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"},
+      "Status": {"type": "string", "enum": ["PENDING", "ASSIGNED", "PICKED_UP", "DELIVERED", "CANCELLED", "FAILED"]},
+      "Timestamp": {"type": "string", "example": "2026-11-13T15:04:05.123456Z"},
+      "Error": {"type": "object", "required": ["error"], "properties": {"error": {"type": "object", "required": ["code", "message", "requestId"], "properties": {
+        "code": {"type": "string", "example": "ORDER_ALREADY_ASSIGNED", "description": "INVALID_INPUT, UNAUTHORIZED, TOKEN_EXPIRED, FORBIDDEN, NOT_FOUND, ROUTE_NOT_FOUND, IDEMPOTENCY_CONFLICT, ORDER_ALREADY_ASSIGNED, COURIER_HAS_ACTIVE_ORDER, COURIER_NOT_AVAILABLE, COURIER_NOT_ENABLED, STORE_NOT_ENABLED, ZONE_MISMATCH, INVALID_TRANSITION, ORDER_CHANGED, CONCURRENT_UPDATE, RATE_LIMITED, DEPENDENCY_UNAVAILABLE, INTERNAL_ERROR"},
+        "message": {"type": "string"}, "requestId": {"type": "string"}}}}},
+      "DevLogin": {"type": "object", "required": ["userId", "role"], "properties": {"userId": {"$ref": "#/components/schemas/Id"}, "role": {"type": "string", "enum": ["STORE", "COURIER", "ADMIN"]}, "adminCode": {"type": "string", "description": "Obligatorio para ADMIN"}}},
+      "Actor": {"type": "object", "properties": {"actorId": {"$ref": "#/components/schemas/Id"}, "role": {"type": "string", "enum": ["STORE", "COURIER", "ADMIN"]}}},
+      "Session": {"type": "object", "properties": {"token": {"type": "string"}, "expiresAt": {"type": "integer", "description": "epoch"}, "actor": {"$ref": "#/components/schemas/Actor"}}},
+      "Zone": {"type": "object", "properties": {"zoneId": {"$ref": "#/components/schemas/Id"}, "name": {"type": "string"}}},
+      "ProfileInput": {"type": "object", "required": ["name", "zoneId"], "properties": {"name": {"type": "string", "minLength": 1, "maxLength": 120}, "zoneId": {"$ref": "#/components/schemas/Id"}}},
+      "EnabledInput": {"type": "object", "required": ["enabled"], "properties": {"enabled": {"type": "boolean"}}},
+      "Store": {"type": "object", "properties": {"storeId": {"$ref": "#/components/schemas/Id"}, "name": {"type": "string"}, "zoneId": {"$ref": "#/components/schemas/Id"}, "enabled": {"type": "boolean"}, "createdAt": {"$ref": "#/components/schemas/Timestamp"}, "updatedAt": {"$ref": "#/components/schemas/Timestamp"}, "version": {"type": "integer"}}},
+      "Courier": {"type": "object", "properties": {"courierId": {"$ref": "#/components/schemas/Id"}, "name": {"type": "string"}, "zoneId": {"$ref": "#/components/schemas/Id"}, "enabled": {"type": "boolean"}, "available": {"type": "boolean"}, "createdAt": {"$ref": "#/components/schemas/Timestamp"}, "updatedAt": {"$ref": "#/components/schemas/Timestamp"}, "version": {"type": "integer"}}},
+      "CreateOrder": {"type": "object", "required": ["pickupAddress", "dropoffAddress", "feeMinor"], "properties": {"pickupAddress": {"type": "string", "minLength": 1, "maxLength": 300}, "dropoffAddress": {"type": "string", "minLength": 1, "maxLength": 300}, "feeMinor": {"type": "integer", "minimum": 1, "maximum": 100000000, "description": "Tarifa en la unidad mínima (COP)"}}},
+      "Order": {"type": "object", "properties": {"orderId": {"$ref": "#/components/schemas/Id"}, "storeId": {"$ref": "#/components/schemas/Id"}, "zoneId": {"$ref": "#/components/schemas/Id"}, "status": {"$ref": "#/components/schemas/Status"}, "courierId": {"$ref": "#/components/schemas/Id"}, "pickupAddress": {"type": "string"}, "dropoffAddress": {"type": "string", "description": "Solo en el detalle"}, "feeMinor": {"type": "integer"}, "currency": {"type": "string", "example": "COP"}, "createdAt": {"$ref": "#/components/schemas/Timestamp"}, "updatedAt": {"$ref": "#/components/schemas/Timestamp"}, "version": {"type": "integer"}}},
+      "CreatedOrder": {"allOf": [{"$ref": "#/components/schemas/Order"}, {"type": "object", "properties": {"trackingToken": {"type": "string", "description": "orderId.secret; se entrega al destinatario"}}}]},
+      "OrderPage": {"type": "object", "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/Order"}}, "nextCursor": {"type": "string", "nullable": true}}},
+      "Event": {"type": "object", "properties": {"eventType": {"type": "string", "enum": ["CREATED", "ASSIGNED", "PICKED_UP", "DELIVERED", "CANCELLED", "FAILED"]}, "occurredAt": {"$ref": "#/components/schemas/Timestamp"}}},
+      "EventPage": {"type": "object", "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/Event"}}, "nextCursor": {"type": "string", "nullable": true}}},
+      "Tracking": {"type": "object", "properties": {"orderId": {"$ref": "#/components/schemas/Id"}, "status": {"$ref": "#/components/schemas/Status"}, "updatedAt": {"$ref": "#/components/schemas/Timestamp"}, "events": {"type": "array", "items": {"$ref": "#/components/schemas/Event"}}, "nextCursor": {"type": "string", "nullable": true}}},
+      "Stats": {"type": "object", "properties": {"storeId": {"$ref": "#/components/schemas/Id"}, "month": {"type": "string"}, "deliveredCount": {"type": "integer"}, "totalFeeMinor": {"type": "integer"}, "updatedAt": {"$ref": "#/components/schemas/Timestamp"}, "source": {"type": "string", "enum": ["cache", "dynamodb"]}}},
+      "Presence": {"type": "object", "properties": {"courierId": {"$ref": "#/components/schemas/Id"}, "zoneId": {"$ref": "#/components/schemas/Id"}, "lastHeartbeatEpoch": {"type": "number"}, "expiresInSeconds": {"type": "integer"}}}
+    }
+  }
+}

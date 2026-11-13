@@ -2,7 +2,7 @@
 
 Base importada del paquete v1.1 aportado por el usuario. Son requisitos y criterios de aceptación; su presencia no implica implementación ni validación. Consultar el [plan](../PLAN_DE_TRABAJO.md) para conocer las brechas actuales.
 
-Estado: SPEC-00, SPEC-01 y SPEC-02 implementadas, con evidencias en [validación](../validation.md). Próximo incremento: SPEC-03, contratos, API y autorización.
+Estado: SPEC-00 a SPEC-03 implementadas, con evidencias en [validación](../validation.md). Próximo incremento: SPEC-04, primer flujo vertical por HTTP.
 
 | Orden | Especificación | Resultado esperado |
 | --- | --- | --- |
