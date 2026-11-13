@@ -2,7 +2,7 @@
 
 Base importada del paquete v1.1 aportado por el usuario. Son requisitos y criterios de aceptación; su presencia no implica implementación ni validación. Consultar el [plan](../PLAN_DE_TRABAJO.md) para conocer las brechas actuales.
 
-Estado: SPEC-00 a SPEC-05 implementadas, con evidencias en [validación](../validation.md). Próximo incremento: SPEC-06, calidad, rendimiento y evidencia.
+Estado: SPEC-00 a SPEC-06 implementadas, con evidencias en [validación](../validation.md). Resultados de calidad en el [informe](../informe-calidad.md).
 
 | Orden | Especificación | Resultado esperado |
 | --- | --- | --- |
