@@ -2,6 +2,8 @@
 
 Base importada del paquete v1.1 aportado por el usuario. Son requisitos y criterios de aceptación; su presencia no implica implementación ni validación. Consultar el [plan](../PLAN_DE_TRABAJO.md) para conocer las brechas actuales.
 
+Estado: SPEC-00 y SPEC-01 implementadas, con evidencias en [validación](../validation.md). Próximo incremento: SPEC-02, composición transaccional e idempotencia de los comandos.
+
 | Orden | Especificación | Resultado esperado |
 | --- | --- | --- |
 | 0 | [Infraestructura](SPEC-00-INFRA-MINISTACK.md) | Entorno y despliegue local verificables |

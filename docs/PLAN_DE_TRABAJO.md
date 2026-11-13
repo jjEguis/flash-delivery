@@ -6,6 +6,8 @@ Fecha de revisión: 2026-11-12. Alcance de esta entrega: análisis y organizaci�
 
 **Reorganización solicitada:** la implementación ahora sigue `app/infra`, `app/lambdas`, `app/layers/dependencias` y `app/tests` del curso; moto/fakeredis ejecutan los unitarios sin infraestructura. Las diferencias históricas del diagnóstico sobre rutas y cdk-dev ya se resolvieron. Las instrucciones vigentes están en el README y la guía local; la próxima SPEC es SPEC-01, modelo de ítems y accesos DynamoDB.
 
+**SPEC-01:** implementados esquema y repositorios AP01–AP12, descriptores transaccionales, token localizable y seed sintético. Consultar [modelo de persistencia](data-model/README.md) y [evidencias](validation.md). La siguiente SPEC es SPEC-02: composición transaccional, idempotencia y conflictos de los comandos de negocio; la existencia de los repositorios no acredita esos casos de uso.
+
 ## 1. Panorama
 
 El dominio es adecuado para demostrar el stack del curso: comercios publican entregas, repartidores de una zona compiten por aceptarlas, un solo repartidor gana y completa el pedido. DynamoDB conserva el estado oficial y las transacciones; Redis aporta presencia temporal y caché Cache-Aside de estadísticas. El MVP excluye pagos, mapas en tiempo real y optimización de rutas.

@@ -1,5 +1,6 @@
 """Fábricas locales: sin conexiones durante la importación."""
 import boto3
+import json
 from botocore.config import Config
 from redis import Redis
 from lambdas.shared.config.settings import Settings
@@ -47,10 +48,27 @@ class DynamoDBAdapter:
 
     def transact_write_items(self, items, **kwargs):
         # Evita que una transacción alcance otras tablas.
+        if not 1 <= len(items) <= 100:
+            raise ValueError("Transacción requiere entre 1 y 100 acciones")
+        seen = set()
         for item in items:
             if len(item) != 1:
                 raise ValueError("Cada operación debe tener una única acción")
+            if next(iter(item)) not in {"Put", "Update", "Delete", "ConditionCheck"}:
+                raise ValueError("Acción transaccional inválida")
             action = next(iter(item.values()))
             if action.get("TableName") != self.settings.table_name:
                 raise ValueError("La transacción solo puede usar la tabla configurada")
+            key = action.get("Key", action.get("Item", {}))
+            try:
+                identity = (key["PK"]["S"], key["SK"]["S"])
+            except (KeyError, TypeError) as exc:
+                raise ValueError("Acción requiere PK/SK String") from exc
+            from lambdas.shared.storage.model import validate_key
+            validate_key({"PK": identity[0], "SK": identity[1]})
+            if identity in seen:
+                raise ValueError("No se permiten dos acciones sobre el mismo ítem")
+            seen.add(identity)
+        if len(json.dumps(items, ensure_ascii=False).encode("utf-8")) > 4 * 1024 * 1024:
+            raise ValueError("Transacción excede límite conservador de 4 MiB")
         return self.client.transact_write_items(TransactItems=items, **kwargs)

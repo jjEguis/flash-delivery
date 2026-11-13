@@ -1,5 +1,9 @@
 # SPEC-01 — DynamoDB Single Table Design
 
+**Estado:** implementada; validación y PR hacia develop forman parte de esta entrega.
+
+Contrato detallado en [modelo de persistencia](../data-model/README.md), con [catálogo JSON](../data-model/catalogo-items.json), claves, atributos requeridos/opcionales, matriz AP01–AP12, cursores, consistencia y límites.
+
 ## Objetivo
 Implementar la tabla y sus accesos sin `Scan` en rutas operativas.
 
@@ -26,3 +30,16 @@ AP01 perfil comercio GetItem; AP02 perfil courier GetItem; AP03 pedido GetItem; 
 
 ## Aceptación
 Para cada patrón AP01–AP12 existe prueba que demuestra la clave usada, paginación cuando corresponda y ausencia de Scan. Validar límites de tamaño y claves reservadas.
+
+## Evidencia de implementación
+
+- `app/lambdas/shared/storage/`: esquema, claves, serialización, Page/cursor y descriptores transaccionales.
+- Repositorios de Stores, Couriers, Orders, Analytics y persistencia de idempotencia; participación en transacciones mediante condiciones, creación, sustitución versionada y eliminación condicional.
+- Availability: lectura paginada de presencia ZSET + heartbeat con TTL; Tracking: ID del pedido más secreto, hash en META y consulta de eventos por clave.
+- `app/scripts/seed_data.py`: 43 ítems sintéticos deterministas para nueve tipos y todos los estados, escritura repetible y limpieza por claves exactas.
+- `app/tests/test_access_patterns.py` y `test_storage_model.py`: claves/expresiones/consistencia, paginación y rangos, cursores incompatibles, índices dispersos, tipos, tamaños, propiedad de ítems y guardas transaccionales con moto/fakeredis.
+- `app/tests/integration/test_data_model.py`: AP01–AP12 y sustitución transaccional de proyecciones sobre MiniStack/Redis reales, con namespace UUID y limpieza acotada.
+
+## Límite del incremento
+
+No incorpora endpoints, autorización HTTP, composición de casos de uso ni resolución de reintentos de negocio. Los repositorios entregan primitivas; los comandos deben componer META, evento y vistas en una transacción. Aceptación competitiva, entrega y métricas exactamente una vez se validarán en SPEC-02/05. Los cursores no son credenciales ni están firmados; la autorización futura debe comprobarse independientemente de ellos.

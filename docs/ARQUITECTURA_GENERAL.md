@@ -4,6 +4,8 @@
 
 **Versión:** 1.1 · **Estado:** propuesta base para implementación · **Fecha:** 2026-11-12
 
+**Implementación actual:** SPEC-00 y SPEC-01 implementadas. El [contrato físico detallado](data-model/README.md) concreta formatos, atributos, tipos, rangos, cursores, seed y pruebas. Endpoints y casos de uso de negocio continúan pendientes.
+
 ## 1. Propósito y alcance
 
 FlashDelivery coordina entregas de última milla. Un comercio crea una solicitud; los repartidores habilitados y disponibles de la zona la visualizan y compiten por aceptarla. La aceptación se confirma de manera atómica y solo puede ganar un repartidor. El destinatario consulta el estado mediante un token de seguimiento.
@@ -95,6 +97,8 @@ Tabla `FlashDeliveryTable`: `PK` (String), `SK` (String). GSI1: `GSI1PK`, `GSI1S
 - Un `GetItem` o `Query` por clave reemplaza escaneos. Consultas con estado y fecha requieren usar GSI2; todos los estados por fecha usan GSI1.
 - El acceso al pedido activo es lectura fuertemente consistente de `COURIER#id / ACTIVE` en tabla base.
 
+Concreciones de SPEC-01: timestamps UTC con seis decimales; tarifa `feeMinor` y moneda `currency`; token público `orderId.secret`, guardando solo SHA-256 del secreto en `trackingTokenHash`. El ID permite GetItem directo y el hash se verifica antes de consultar eventos. Los cursores están ligados a la consulta, pero no otorgan permisos. La API y la política de emisión/reintento del token se concretarán en SPEC-03.
+
 **Nota de consistencia:** al usar dos proyecciones en ítems separados se acepta duplicación controlada. Las mutaciones deben mantenerlas dentro de la misma transacción. La lectura de GSI puede presentar retraso temporal.
 
 ## 7. Operaciones transaccionales
@@ -154,7 +158,7 @@ flash-delivery/
 └── .env.example
 ```
 
-Estructura alineada con el ejemplo del curso por instrucción del usuario. Los handlers de cada funcionalidad exponen `main(event, context)`; casos de uso y repositorios se incorporarán dentro de su módulo cuando se implementen. Evitar carpetas vacías y capas artificiales: generar cada subcarpeta cuando tenga código real. `shared` contiene únicamente primitivas transversales, nunca lógica de negocio.
+Los handlers de cada funcionalidad exponen `main(event, context)`; los repositorios viven en su módulo y los casos de uso se incorporarán en las siguientes SPEC. Evitar carpetas vacías y capas artificiales: generar cada subcarpeta cuando tenga código real. `shared` contiene únicamente primitivas transversales y contrato físico de almacenamiento, nunca casos de uso de negocio.
 
 ## 11. MiniStack: estrategia de validación y despliegue local
 
@@ -196,7 +200,7 @@ Cada SPEC debe aprobarse con pruebas y criterios de aceptación antes de iniciar
 
 ## 15. Riesgos y pendientes
 
-- Compatibilidad real de MiniStack y de CDK con servicios necesarios (bloqueante).
+- Conservar y ampliar las pruebas de compatibilidad MiniStack/CDK al incorporar funcionalidades; la base y el modelo de persistencia ya tienen evidencia local.
 - Coste de mantener proyecciones sincronizadas y restricciones de transacciones.
 - Consistencia eventual de GSIs y latencia en listas de abiertos.
 - Definir timeout de heartbeat, expiración de idempotencia y política de `FAILED`.

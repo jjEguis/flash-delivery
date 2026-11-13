@@ -1,5 +1,24 @@
 # Registro de validación
 
+## SPEC-01 — modelo de persistencia
+
+Implementados los nueve tipos de ítem de la tabla única, claves/índices canónicos, consultas AP01–AP12, cursores, rangos, condiciones y descriptores de escritura por módulo. El [modelo detallado](data-model/README.md) incluye el [catálogo JSON](data-model/catalogo-items.json). El token de seguimiento localiza el pedido por ID y verifica el secreto por hash antes de leer eventos.
+
+| Comprobación ejecutada | Resultado |
+| --- | --- |
+| Unitarios en contenedor `--network none` | **59 passed, 11 deselected**, 6.74 s |
+| Suite completa desde cdk-dev después de reprovisionar | **70 passed**, 6.99 s; 59 unitarios y 11 integraciones |
+| `python -m scripts.seed_data --namespace SEED_spec01`, repetido dos veces | 43 ítems por ejecución; escrituras sobre las mismas claves sintéticas |
+| `python -m scripts.seed_data --namespace SEED_spec01 --clean` | Limpieza por claves exactas; sin Scan ni vaciado global de Redis |
+| `python -m scripts.provision` desde cdk-dev | Nuevo ZIP publicado y stack actualizado; health/readiness continúan operativos |
+| pip check, compileall, Compose config, enlaces locales y catálogo JSON | Correctos |
+
+Los tests AP01–AP12 con moto/fakeredis registran las llamadas para comprobar PK/SK, índices, expresiones, consistencia fuerte/eventual y paginación. Cubren cursores de otra consulta, fechas inclusivas con empate de timestamp, límites, campos reservados mediante aliases, ausencia de Scan/FilterExpression, TTL/miembros caducados/JSON corrupto en Redis y seguimiento sin datos privados.
+
+La nueva integración crea namespace UUID sobre MiniStack/Redis, ejercita los doce accesos, espera convergencia GSI y verifica reemplazo transaccional de META/evento/vistas/ACTIVE, retirada del índice abierto y rechazo condicional sin nueva mutación. Limpia tanto los datos del seed como las claves adicionales de la prueba.
+
+La documentación y README se actualizaron con el estado de persistencia; se retiró del README la explicación del origen de la organización. No se implementaron endpoints ni se acreditan todavía concurrencia de negocio, autorización HTTP o resolución duradera de reintentos: corresponden a SPEC-02/03/05. Cursores sin firma y tamaños JSON conservadores se documentan expresamente.
+
 ## Reorganización según el ejemplo del curso — 2026-11-12
 
 Revisado nuevamente `bd_no_sql` en el commit `835ada8aa75f243b8bc2f5a80fa8cd37519ea5f8`, incluyendo fixtures y tests de caché. La estructura actual es `app/infra`, `app/lambdas`, `app/layers/dependencias`, `app/tests` y `app/scripts`. Los comandos de apartados anteriores corresponden al historial de la organización previa; usar los del README y [guía local](ENTORNO_LOCAL.md).
