@@ -1,5 +1,20 @@
 # Registro de validación
 
+## SPEC-07 — fiabilidad del frontend — 2026-11-15
+
+| Comprobación ejecutada | Resultado |
+| --- | --- |
+| `npm test`, desde frontend | **22 passed**: HTTP, reintentos, reautenticación y paginación |
+| `npm run test:e2e` con Chromium | **10 passed**: cinco escenarios, repetidos en escritorio y viewport/touch móvil; 3.2 s |
+| `npm run test:smoke` contra web/API real | **1 passed**, 4.1 s: health, zonas y login hasta el formulario de alta, sin crear perfiles/pedidos |
+| Suite unitaria Python | **100 passed, 15 deselected**, 11.85 s |
+| `tests/integration/test_api_flow.py` | **2 passed**, 7.32 s; flujo HTTP real existente después de reprovisionar |
+| `scripts.provision` | Stack local actualizado; `/api/v1/zones` dejó de devolver el 404 del despliegue anterior |
+
+Los casos de fallo del navegador usan API interceptada: JSON truncado después de 201, aborto de red y 503, recarga, formulario reenviado con la misma clave y una sola creación lógica en la simulación. La comprobación real no simula esas fallas ni acredita por sí sola las carreras del backend. No se repitieron carga de 10k ni las 100 aceptaciones porque no cambió su implementación.
+
+Se añadieron job frontend de CI, lock de Playwright y documentación de reintentos y almacenamiento. Las dependencias son solo de desarrollo; la SPA sigue servida sin compilación. El almacenamiento bloqueado solo conserva el respaldo en memoria, y no se ofrece exclusión entre pestañas. Evidencias históricas de SPEC-00–06 a continuación.
+
 ## Frontend — 2026-11-13
 
 SPA sin dependencias en `frontend/` servida por `web` (proxy same-origin hacia API Gateway). Verificada en el navegador integrado contra MiniStack:

@@ -1,3 +1,6 @@
+import { createApiClient, validPage, validCreatedOrder } from "./api.js";
+import { createPagedList } from "./pagination.js";
+
 // FlashDelivery — SPA sin dependencias. Habla con /api/v1 a través del proxy local.
 const $ = (sel, el = document) => el.querySelector(sel);
 const app = $("#app");
@@ -11,7 +14,6 @@ const EVENT_LABEL = {
   CREATED: "Pedido creado", ASSIGNED: "Repartidor asignado", PICKED_UP: "Pedido recogido",
   DELIVERED: "Pedido entregado", CANCELLED: "Pedido cancelado", FAILED: "Entrega fallida",
 };
-const pending = new Map(); // intención → Idempotency-Key (se conserva si hay que reintentar)
 let timers = [];
 let zonesCache = null;
 
@@ -24,7 +26,6 @@ const short = (id) => esc(String(id || "").slice(-8));
 const month = () => new Date().toISOString().slice(0, 7);
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* sin almacenamiento */ } };
-const newKey = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2)).replace(/[^A-Za-z0-9_-]/g, "");
 let session = load(SESSION_KEY, null);
 
 function toast(message, bad = false) {
@@ -38,26 +39,9 @@ function toast(message, bad = false) {
 
 function every(ms, fn) { timers.push(setInterval(fn, ms)); }
 
-async function api(method, path, { body, intent } = {}) {
-  const headers = { "Content-Type": "application/json" };
-  if (session?.token) headers.Authorization = "Bearer " + session.token;
-  if (intent) {
-    if (!pending.has(intent)) pending.set(intent, newKey());
-    headers["Idempotency-Key"] = pending.get(intent);
-  }
-  let res;
-  try {
-    res = await fetch("/api/v1" + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
-  } catch {
-    throw Object.assign(new Error("No hay conexión con la API. Puedes reintentar."), { code: "NETWORK" });
-  }
-  const data = res.status === 204 ? null : await res.json().catch(() => null);
-  if (res.ok) { if (intent) pending.delete(intent); return data; }
-  if (intent && res.status < 500 && data?.error?.code !== "CONCURRENT_UPDATE") pending.delete(intent);
-  if (res.status === 401 && session && !path.startsWith("/tracking")) { logout(true); }
-  const err = data?.error || {};
-  throw Object.assign(new Error(err.message || "Error " + res.status), { status: res.status, code: err.code });
-}
+let requestStorage;
+try { requestStorage = localStorage; } catch { /* navegador sin almacenamiento */ }
+const api = createApiClient({ getSession: () => session, storage: requestStorage, onUnauthorized: () => logout(true) });
 
 async function zones() {
   if (!zonesCache) zonesCache = (await api("GET", "/zones")).items;
@@ -83,7 +67,8 @@ function nav() {
 
 function guard(fn) {
   return async (event) => {
-    const button = event?.submitter || event?.currentTarget;
+    if (event?.type === "submit") event.preventDefault();
+    const button = event?.submitter || event?.target?.closest?.("button") || event?.currentTarget;
     if (button?.disabled) return;
     if (button && "disabled" in button) button.disabled = true;
     try { await fn(event); } catch (error) { toast(error.message, true); } finally {
@@ -275,7 +260,7 @@ async function storeView() {
   $("#newOrder").addEventListener("submit", guard(async (e) => {
     e.preventDefault();
     const body = { pickupAddress: $("#pickup").value, dropoffAddress: $("#dropoff").value, feeMinor: Number($("#fee").value) };
-    const created = await api("POST", "/orders", { body, intent: "create:" + JSON.stringify(body) });
+    const created = await api("POST", "/orders", { body, intent: "create", validate: validCreatedOrder });
     const tokens = load(TOKENS_KEY, {});
     tokens[created.orderId] = created.trackingToken;
     save(TOKENS_KEY, tokens);
@@ -344,8 +329,11 @@ async function courierView() {
       <div>
         <section class="card"><div class="card__head"><h2>Pedidos disponibles en tu zona</h2><span class="muted" id="openCount"></span></div>
           <div class="list" id="open"></div>
+          <button class="btn btn--block btn--ghost" id="moreOpen" hidden>Cargar más pedidos</button>
+          <button class="btn btn--block btn--ghost btn--sm" id="refreshOpen">Actualizar pedidos</button>
           <p class="muted" style="margin-top:10px">Lista con consistencia eventual: al aceptar, DynamoDB confirma de forma atómica que nadie más lo tomó.</p></section>
-        <section class="card"><h2 style="margin-bottom:14px">Tu historial</h2><div class="list" id="history"></div></section>
+        <section class="card"><h2 style="margin-bottom:14px">Tu historial</h2><div class="list" id="history"></div>
+          <button class="btn btn--block btn--ghost" id="moreHistory" hidden>Cargar más historial</button></section>
       </div>
       <aside class="sticky">
         <section class="card">
@@ -382,23 +370,43 @@ async function courierView() {
     return order;
   }
 
-  async function loadOpen() {
-    const active = !!$("#active [data-step]");
-    const page = await api("GET", `/orders/available?zoneId=${encodeURIComponent(courier.zoneId)}&limit=20`);
-    $("#openCount").textContent = page.items.length ? `${page.items.length} disponibles` : "";
-    $("#open").innerHTML = page.items.length ? page.items.map((o) => `<div class="item" style="cursor:default">
+  const openBox = $("#open"), historyBox = $("#history");
+  const openMore = $("#moreOpen"), historyMore = $("#moreHistory"), openCount = $("#openCount");
+  const openPages = createPagedList({
+    loadPage: (cursor) => {
+      const query = new URLSearchParams({ zoneId: courier.zoneId, limit: "20" });
+      if (cursor) query.set("cursor", cursor);
+      return api("GET", "/orders/available?" + query, { validate: validPage });
+    },
+    onChange: (page) => {
+      const active = !!$("#active [data-step]");
+      openCount.textContent = `${page.items.length} cargados${page.nextCursor ? " · hay más" : ""}`;
+      openBox.innerHTML = page.items.length ? page.items.map((o) => `<div class="item" style="cursor:default">
         <span><b>${esc(o.pickupAddress)}</b><br><span class="id">${esc(o.orderId)}</span></span><strong>${money(o.feeMinor)}</strong>
         <span class="meta"><span>Publicado ${when(o.createdAt)}</span>
           <button class="btn btn--sm" data-accept="${esc(o.orderId)}" ${active || !courier.available ? "disabled" : ""}>Aceptar</button></span></div>`).join("")
-      : `<div class="empty">No hay pedidos abiertos en tu zona.</div>`;
-  }
-
-  async function loadHistory() {
-    const page = await api("GET", "/couriers/me/orders?limit=10");
-    $("#history").innerHTML = page.items.length ? page.items.map((o) => `<div class="item" style="cursor:default">
-      <span class="id">${esc(o.orderId)}</span>${badge(o.status)}<span class="meta"><span>${when(o.updatedAt)}</span></span></div>`).join("")
-      : `<div class="empty">Todavía no has hecho entregas.</div>`;
-  }
+        : `<div class="empty">No hay pedidos abiertos en tu zona.</div>`;
+      openMore.hidden = !page.nextCursor;
+    },
+  });
+  const historyPages = createPagedList({
+    loadPage: (cursor) => {
+      const query = new URLSearchParams({ limit: "10" });
+      if (cursor) query.set("cursor", cursor);
+      return api("GET", "/couriers/me/orders?" + query, { validate: validPage });
+    },
+    onChange: (page) => {
+      historyBox.innerHTML = page.items.length ? page.items.map((o) => `<div class="item" style="cursor:default">
+        <span class="id">${esc(o.orderId)}</span>${badge(o.status)}<span class="meta"><span>${when(o.updatedAt)}</span></span></div>`).join("")
+        : `<div class="empty">Todavía no has hecho entregas.</div>`;
+      historyMore.hidden = !page.nextCursor;
+    },
+  });
+  const loadOpen = () => openPages.refresh();
+  const loadHistory = () => historyPages.refresh();
+  openMore.addEventListener("click", guard(() => openPages.loadMore()));
+  historyMore.addEventListener("click", guard(() => historyPages.loadMore()));
+  $("#refreshOpen").addEventListener("click", guard(loadOpen));
 
   $("#open").addEventListener("click", guard(async (e) => {
     const b = e.target.closest("[data-accept]");

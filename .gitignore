@@ -7,3 +7,5 @@ __pycache__/
 cdk.out/
 node_modules/
 dist/
+test-results/
+playwright-report/

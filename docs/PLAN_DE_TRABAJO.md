@@ -1,5 +1,7 @@
 # Plan de trabajo — FlashDelivery
 
+**Estado actual — 2026-11-15:** SPEC-00 a SPEC-06 y el frontend se integraron en develop. SPEC-07 incorpora reintentos, paginación y tests de navegador; detalles en [la especificación](specs/SPEC-07-FRONTEND-FIABILIDAD.md). Los apartados siguientes conservan el diagnóstico y la secuencia históricos; consultar README y validación para los comandos y evidencias actuales.
+
 Fecha de revisión: 2026-11-12. Alcance de esta entrega: análisis y organización documental; no implementación de negocio ni cambios al entorno en ejecución.
 
 **Actualización posterior:** incremento 0 implementado: cdk-dev, empaquetado ZIP/S3 local, rutas de salud y prueba de persistencia. Consultar [validación](validation.md) y [guía local](ENTORNO_LOCAL.md). El diagnóstico siguiente conserva el estado observado antes de ese incremento; el próximo trabajo corresponde a contratos y primer flujo de negocio.

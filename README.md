@@ -2,7 +2,7 @@
 
 Aplicación de entregas de última milla con DynamoDB (tabla única), Redis, Python, Lambda y API Gateway, ejecutada localmente sobre MiniStack. Los comercios publican pedidos, los repartidores de la zona compiten por aceptarlos y una transacción condicional garantiza que solo uno gane. El destinatario sigue su pedido con un enlace seguro.
 
-Estado: SPEC-00 a SPEC-06 implementadas, con API HTTP completa (27 operaciones), interfaz web y evidencias de calidad. Consultar [especificaciones](docs/specs/README.md) y [validación](docs/validation.md).
+Estado: SPEC-00 a SPEC-07 implementadas, con API HTTP completa (27 operaciones), interfaz web con reintentos y paginación, y pruebas de backend y navegador. Consultar [especificaciones](docs/specs/README.md) y [validación](docs/validation.md).
 
 ```text
 flash-delivery/
@@ -78,7 +78,19 @@ docker compose exec -T cdk-dev python -m pytest tests/ -m integration -q
 docker compose exec -T cdk-dev python -m pytest tests/ -m 'integration or not integration' -q
 ```
 
-La integración cubre API Gateway → Lambda empaquetada → DynamoDB/Redis con el ciclo completo de un pedido y 100 aceptaciones concurrentes con un único ganador. GitHub Actions ejecuta los unitarios en cada PR hacia develop.
+La integración cubre API Gateway → Lambda empaquetada → DynamoDB/Redis con el ciclo completo de un pedido y 100 aceptaciones concurrentes con un único ganador. GitHub Actions ejecuta los unitarios Python y un job independiente de frontend en cada PR hacia develop.
+
+Pruebas del frontend, desde `frontend/` (Node 22 y Python 3):
+
+```bash
+npm ci
+npm test
+npx playwright install chromium
+npm run test:e2e          # Chromium de escritorio y vista móvil, con API simulada
+npm run test:smoke        # requiere web y API reales provisionadas
+```
+
+El navegador conserva las claves de acciones pendientes ante errores de red, respuestas incompletas y fallos transitorios; al recargar puede recuperar la clave si se reenvían los mismos datos. El repartidor dispone de «Cargar más pedidos» y «Cargar más historial», con refresco de las páginas visibles. Alcance y límites en [SPEC-07](docs/specs/SPEC-07-FRONTEND-FIABILIDAD.md).
 
 ## Rendimiento y evidencias
 
