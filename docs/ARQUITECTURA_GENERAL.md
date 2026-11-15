@@ -4,7 +4,7 @@
 
 **Versión:** 1.1 · **Estado:** propuesta base para implementación · **Fecha:** 2026-11-12
 
-**Implementación actual:** SPEC-00 y SPEC-01 implementadas. El [contrato físico detallado](data-model/README.md) concreta formatos, atributos, tipos, rangos, cursores, seed y pruebas. Endpoints y casos de uso de negocio continúan pendientes.
+**Implementación actual:** SPEC-00 a SPEC-07 implementadas: modelo de persistencia, comandos transaccionales, API, presencia/caché, evidencias de calidad y frontend. El [contrato físico](data-model/README.md) y el [OpenAPI](api/openapi.json) concretan datos y operaciones. SPEC-07 documenta los [reintentos y pruebas de la SPA](specs/SPEC-07-FRONTEND-FIABILIDAD.md).
 
 ## 1. Propósito y alcance
 
@@ -19,8 +19,11 @@ FlashDelivery coordina entregas de última milla. Un comercio crea una solicitud
 **Monolito modular serverless + arquitectura hexagonal ligera (puertos y adaptadores) + casos de uso.** Una base de código Python, con módulos lógicos independientes y funciones Lambda como adaptadores de entrada. API Gateway expone HTTP; DynamoDB persiste el estado oficial; Redis conserva presencia efímera y cachés. No hay llamadas Lambda-a-Lambda para ejecutar una transacción.
 
 ```text
-React/Vite (posterior)
-      │ HTTPS/JSON
+SPA HTML/CSS/JavaScript
+      │ HTTP/JSON, mismo origen
+      ▼
+Servidor web Python / proxy local
+      │ HTTP/JSON
       ▼
 API Gateway [MiniStack, sujeto a verificación]
       │
@@ -152,13 +155,13 @@ flash-delivery/
 │   └── scripts/                  # paquete, provisionamiento y persistencia
 ├── docs/
 │   └── specs/
-├── frontend/                     # posterior
+├── frontend/                     # SPA, cliente HTTP y pruebas Node/Playwright
 ├── Dockerfile
 ├── docker-compose.yml
 └── .env.example
 ```
 
-Los handlers de cada funcionalidad exponen `main(event, context)`; los repositorios viven en su módulo y los casos de uso se incorporarán en las siguientes SPEC. Evitar carpetas vacías y capas artificiales: generar cada subcarpeta cuando tenga código real. `shared` contiene únicamente primitivas transversales y contrato físico de almacenamiento, nunca casos de uso de negocio.
+Los handlers de cada funcionalidad exponen `main(event, context)`; repositorios y casos de uso viven en su módulo. `frontend/api.js` gestiona HTTP e intenciones pendientes, y `frontend/pagination.js` el estado de las páginas del repartidor. Playwright es una dependencia de desarrollo: la SPA no requiere compilación para ejecutarse. Evitar carpetas vacías y capas artificiales: generar cada subcarpeta cuando tenga código real. `shared` contiene únicamente primitivas transversales y contrato físico de almacenamiento, nunca casos de uso de negocio.
 
 ## 11. MiniStack: estrategia de validación y despliegue local
 

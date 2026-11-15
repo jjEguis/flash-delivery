@@ -2,7 +2,7 @@
 
 Base importada del paquete v1.1 aportado por el usuario. Son requisitos y criterios de aceptación; su presencia no implica implementación ni validación. Consultar el [plan](../PLAN_DE_TRABAJO.md) para conocer las brechas actuales.
 
-Estado: SPEC-00 a SPEC-06 implementadas, con evidencias en [validación](../validation.md). Resultados de calidad en el [informe](../informe-calidad.md).
+Estado: SPEC-00 a SPEC-07 implementadas, con evidencias en [validación](../validation.md). Resultados de calidad en el [informe](../informe-calidad.md).
 
 | Orden | Especificación | Resultado esperado |
 | --- | --- | --- |
@@ -13,7 +13,6 @@ Estado: SPEC-00 a SPEC-06 implementadas, con evidencias en [validación](../vali
 | 4 | [Primer flujo](SPEC-04-IMPLEMENTACION-BASE.md) | Comercio habilitado crea y consulta pedidos |
 | 5 | [Asignación y lecturas](SPEC-05-DISPATCH-Y-LECTURAS.md) | Aceptar, recoger, entregar, cancelar, presencia, seguimiento y métricas |
 | 6 | [Calidad](SPEC-06-CALIDAD.md) | Evidencia reproducible de corrección y rendimiento |
+| 7 | [Fiabilidad del frontend](SPEC-07-FRONTEND-FIABILIDAD.md) | Reintentos persistidos, paginación del repartidor y tests de navegador |
 
-Antes de implementar, completar en cada funcionalidad: actor, entradas, autorización, precondiciones, resultado, errores, persistencia y pruebas. SPEC-03 debe cerrar también habilitación administrativa de perfiles, consulta de pedido activo y entrega del token de seguimiento; no basta con las rutas resumidas actuales.
-
-El OpenAPI todavía debe concretarse y alinearse con estas especificaciones antes de generar código de negocio. `requestId` de trazabilidad e `Idempotency-Key` son conceptos distintos: fijar explícitamente su traducción al contrato de aplicación.
+El contrato vigente está en [OpenAPI](../api/openapi.json). Para nuevas funcionalidades, detallar actor, entradas, autorización, precondiciones, resultados, errores, persistencia y pruebas. `requestId` de trazabilidad e `Idempotency-Key` son conceptos distintos; mantener esa separación en API y frontend.
