@@ -35,3 +35,9 @@ npm run test:smoke                 # web :8080 y API real provisionada
 El smoke real consulta salud/zonas y hace login hasta el formulario de alta, sin enviar ese formulario ni crear perfiles/pedidos. Se puede cambiar su origen con `FRONTEND_BASE_URL`. Los demás tests arrancan su servidor aislado en :4173 e interceptan las solicitudes de API. En Linux, Playwright puede requerir `install --with-deps chromium`.
 
 GitHub Actions ejecuta los unitarios y el navegador con API simulada. Los directorios `test-results/` y `playwright-report/` son artefactos locales ignorados. Alcance y criterios en [SPEC-07](../docs/specs/SPEC-07-FRONTEND-FIABILIDAD.md).
+
+## Prototipo de diseño FE-00/FE-01
+
+La entrada independiente `preview.html` usa React, TypeScript y Vite con datos en memoria. Requiere Node 22.12+. Ejecutar `npm ci` y `npm run dev:preview`; abrir http://127.0.0.1:5173/preview.html. `npm run build` genera `design-dist/` y `npm run preview` sirve esa compilación. No requiere API ni Docker. El cliente funcional descrito arriba continúa en :8080.
+
+Código por funcionalidades en `src/features/`, shell y providers en `src/app/`, primitivas en `src/components/`, fixtures en `src/mocks/` y tokens en `src/styles/`. Pruebas adicionales: `npm run lint`, `npm run test:design` y `npm run test:design:e2e`. [Guía de revisión](../docs/frontend/FE-01-REVISION.md) y [decisiones](../docs/frontend/FE-00-DISENO.md). La revisión visual está pendiente antes de iniciar FE-02.

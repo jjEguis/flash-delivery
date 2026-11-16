@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="es-CO">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Vista previa de diseño de FlashDelivery con datos de demostración." />
+    <title>FlashDelivery · Vista previa</title>
+    <script>
+      (() => {
+        let preference = 'system';
+        try { preference = localStorage.getItem('flashdelivery:theme:v1') || 'system'; } catch {}
+        if (!['system', 'light', 'dark'].includes(preference)) preference = 'system';
+        const dark = preference === 'dark' || (preference === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      })();
+    </script>
+    <link rel="stylesheet" href="/src/styles/index.css" />
+  </head>
+  <body>
+    <div id="design-root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

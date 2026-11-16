@@ -16,3 +16,7 @@ Estado: SPEC-00 a SPEC-07 implementadas, con evidencias en [validación](../vali
 | 7 | [Fiabilidad del frontend](SPEC-07-FRONTEND-FIABILIDAD.md) | Reintentos persistidos, paginación del repartidor y tests de navegador |
 
 El contrato vigente está en [OpenAPI](../api/openapi.json). Para nuevas funcionalidades, detallar actor, entradas, autorización, precondiciones, resultados, errores, persistencia y pruebas. `requestId` de trazabilidad e `Idempotency-Key` son conceptos distintos; mantener esa separación en API y frontend.
+
+## Diseño frontend v2.1
+
+[SPEC-07 de diseño v2.1](SPEC-07_FRONTEND_DESIGN_v2.1.md) es un trabajo adicional a la SPEC-07 de fiabilidad. FE-00/FE-01 implementadas como prototipo aislado, pendiente aprobación visual; FE-02 y siguientes pendientes. Consultar [decisiones](../frontend/FE-00-DISENO.md), [guía y capturas](../frontend/FE-01-REVISION.md). No está conectado a la API.
