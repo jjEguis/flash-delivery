@@ -13,6 +13,7 @@ from lambdas.shared.storage.repository import page_dto
 from lambdas.shared.storage.transactions import run_command
 from lambdas.stores.repository import StoresRepository
 from lambdas.tracking.tokens import issue_token
+from lambdas.tracking.access import TrackingAccess, new_access
 
 CURRENCY = "COP"
 MAX_FEE_MINOR = 100_000_000
@@ -87,7 +88,8 @@ def create_order(adapter, actor: ActorContext, *, request_id, pickup_address, dr
         if not store["enabled"]:
             raise ForbiddenError("Tu comercio aún no está habilitado", "STORE_NOT_ENABLED")
         order_id = clock.new_id("o_")
-        _, token_hash = issue_token(order_id)
+        access = new_access(order_id)
+        _, token_hash = issue_token(order_id, access["nonce"])
         order = order_meta(order_id=order_id, store_id=store["storeId"], zone_id=store["zoneId"],
                            created_at=now, pickup_address=payload["pickupAddress"],
                            dropoff_address=payload["dropoffAddress"], fee_minor=payload["feeMinor"],
@@ -95,13 +97,15 @@ def create_order(adapter, actor: ActorContext, *, request_id, pickup_address, dr
         changed = ForbiddenError("Tu comercio cambió o fue deshabilitado", "STORE_NOT_ENABLED")
         return [(stores.build_enabled_condition(store["storeId"], store["version"]), changed),
                 (orders.build_put(order), None),
+                (TrackingAccess(adapter).build_put(access), None),
                 (orders.build_put(order_event(order_id, clock.new_id("e_"), "CREATED", now)), None),
                 (orders.build_put(store_status_view(order)), None)], {"orderId": order_id}
 
     result = run_command(adapter, actor_id=actor.actor_id, operation="orders.create.v1",
                          request_id=request_id, payload=payload, build=build, now=now)
     order = load_order(adapter, result["orderId"])
-    token, _ = issue_token(order["orderId"])
+    access = TrackingAccess(adapter).for_order(order["orderId"])
+    token, _ = issue_token(order["orderId"], access["nonce"] if access else None)
     return {**order_view(order, detail=True), "trackingToken": token}
 
 

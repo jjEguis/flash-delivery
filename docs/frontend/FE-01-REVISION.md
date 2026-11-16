@@ -1,6 +1,6 @@
 # FE-01 — Revisión del prototipo
 
-Estado: implementado; pendiente aprobación visual del usuario. No implica completar toda la SPEC de diseño v2.1.
+Estado: base visual aprobada por el usuario y PR #11 fusionado. No implica completar toda la SPEC de diseño v2.1.
 
 Desde `frontend/`, con Node 22.12 o superior:
 
@@ -32,3 +32,5 @@ Abrir http://127.0.0.1:5173/preview.html. No necesita Docker ni API. Para compro
 `npm run lint`, `npm run build`, `npm run test:design` y `npm run test:design:e2e`. Las pruebas de navegador usan Chromium, axe, ambos temas y anchos 360/390/768/1024/1440. Incluyen teclado, persistencia, almacenamiento bloqueado, tema previo a React, estados y formularios simulados; rechazan solicitudes externas o a API. Se conservan `npm test` y `npm run test:e2e` para la aplicación funcional.
 
 Estas comprobaciones no certifican accesibilidad completa: falta revisión humana con lector de pantalla y aprobación estética. La integración real, autenticación, heartbeat, cursores y reintentos del nuevo diseño quedan para etapas posteriores. Resultados en [validación](../validation.md).
+
+SPEC-08 incorpora una [vista geográfica con API real](../geo/README.md) accesible desde :8080; las demás pantallas de este prototipo conservan sus fixtures.

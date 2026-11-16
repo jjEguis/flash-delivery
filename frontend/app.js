@@ -293,6 +293,7 @@ async function orderDialog(orderId, onChange) {
       </div>
       <div class="highlight"><span>Tarifa</span><strong>${money(order.feeMinor)}</strong></div>
       <p class="muted" style="margin-top:12px">Zona ${esc(zoneName(order.zoneId))}${order.courierId ? ` · Repartidor <b>${esc(order.courierId)}</b>` : ""} · versión ${order.version}</p>
+      ${session.actor.role === "STORE" ? `<a class="btn btn--block btn--ghost" href="/design-dist/geo.html#/order/${encodeURIComponent(orderId)}" target="_blank" rel="noreferrer">Ver ubicación de la entrega</a>` : ""}
       <h3 style="margin:18px 0 10px">Historial</h3>
       <ol class="timeline">${events.items.map((ev) => `<li><b>${esc(EVENT_LABEL[ev.eventType] || ev.eventType)}</b><time>${when(ev.occurredAt)}</time></li>`).join("")}</ol>
       ${link ? `<label for="share">Enlace de seguimiento para el cliente</label>
@@ -361,7 +362,8 @@ async function courierView() {
       <div class="stat"><span class="muted">Recoger en</span><b style="display:block">${esc(order.pickupAddress)}</b></div>
       <div class="stat" style="margin-top:10px"><span class="muted">Entregar en</span><b style="display:block">${esc(order.dropoffAddress)}</b></div>
       <div class="highlight"><span>Ganas</span><strong>${money(order.feeMinor)}</strong></div>
-      <button class="btn btn--block btn--accent" data-step="${next[0]}">${next[1]}</button>`;
+      <button class="btn btn--block btn--accent" data-step="${next[0]}">${next[1]}</button>
+      <a class="btn btn--block btn--ghost" href="/design-dist/geo.html#/order/${encodeURIComponent(order.orderId)}" target="_blank" rel="noreferrer">Compartir ubicación</a>`;
     box.querySelector("[data-step]").addEventListener("click", guard(async () => {
       await api("POST", `/orders/${encodeURIComponent(order.orderId)}/${next[0]}`, { intent: next[0] + ":" + order.orderId });
       toast(next[0] === "pickup" ? "Pedido recogido" : "¡Entregado! Buen trabajo");
@@ -491,7 +493,8 @@ async function trackingView(token) {
         ${["CANCELLED", "FAILED"].includes(t.status) ? `<div class="notice" style="margin-top:14px">${t.status === "CANCELLED" ? "El comercio canceló este pedido." : "La entrega no pudo completarse."}</div>`
           : `<div class="steps">${flow.map(([k, l]) => `<div class="step ${reached.has(k) ? "done" : ""}">${l}</div>`).join("")}</div>`}
         <ol class="timeline">${t.events.map((e) => `<li><b>${esc(EVENT_LABEL[e.eventType] || e.eventType)}</b><time>${when(e.occurredAt)}</time></li>`).join("")}</ol>
-        <p class="muted" style="margin-top:14px">Solo mostramos el estado y los hitos: ni direcciones ni datos personales.</p>`;
+        <p class="muted" style="margin-top:14px">Solo mostramos el estado y los hitos: ni direcciones ni datos personales.</p>
+        <a class="btn btn--block btn--ghost" href="/design-dist/geo.html#/tracking/${encodeURIComponent(token)}" target="_blank" rel="noreferrer">Ver ubicación compartida</a>`;
     } catch (error) {
       box.innerHTML = `<h2>No encontramos ese pedido</h2><p class="muted" style="margin-top:8px">Revisa el enlace que te compartieron.</p>
         <a class="btn btn--block btn--ghost" href="#/seguimiento">Probar con otro código</a>`;

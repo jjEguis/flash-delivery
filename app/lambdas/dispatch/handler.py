@@ -15,7 +15,7 @@ ROUTES = {
     "POST /api/v1/orders/{orderId}/accept": _transition(service.accept_order),
     "POST /api/v1/orders/{orderId}/pickup": _transition(service.pick_up_order),
     "POST /api/v1/orders/{orderId}/deliver": _transition(service.deliver_order, cache=shared_redis),
-    "POST /api/v1/orders/{orderId}/cancel": _transition(service.cancel_order),
-    "POST /api/v1/orders/{orderId}/fail": _transition(service.fail_order),
+    "POST /api/v1/orders/{orderId}/cancel": _transition(service.cancel_order, cache=shared_redis),
+    "POST /api/v1/orders/{orderId}/fail": _transition(service.fail_order, cache=shared_redis),
 }
 main = router(ROUTES)

@@ -43,6 +43,11 @@ ROUTES = {
     ],
     "tracking": [
         "GET /api/v1/tracking/{token}",
+        "POST /api/v1/orders/{orderId}/location",
+        "GET /api/v1/orders/{orderId}/location",
+        "DELETE /api/v1/orders/{orderId}/location",
+        "GET /api/v1/tracking/{token}/location",
+        "DELETE /api/v1/orders/{orderId}/tracking-token",
     ],
     "analytics": [
         "GET /api/v1/stores/me/stats",

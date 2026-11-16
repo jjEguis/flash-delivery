@@ -3,7 +3,7 @@
   "info": {
     "title": "FlashDelivery API",
     "version": "1.0.0",
-    "description": "API v1 de FlashDelivery (SPEC-03). Entorno local con MiniStack: la autenticación es un adaptador de desarrollo con tokens HMAC, no apto para producción. Los IDs de comercio y repartidor coinciden con el actor autenticado (un perfil por usuario en el MVP). Las escrituras de negocio exigen Idempotency-Key: la misma clave con el mismo contenido devuelve el resultado previo; con otro contenido responde 409 IDEMPOTENCY_CONFLICT."
+    "description": "API v1 de FlashDelivery (SPEC-03). Entorno local con MiniStack: la autenticación es un adaptador de desarrollo con tokens HMAC, no apto para producción. Los IDs de comercio y repartidor coinciden con el actor autenticado (un perfil por usuario en el MVP). Los comandos transaccionales exigen Idempotency-Key (la publicación de ubicación usa recordedAt): la misma clave con el mismo contenido devuelve el resultado previo; con otro contenido responde 409 IDEMPOTENCY_CONFLICT. SPEC-08: ubicación efímera, tokens nuevos aleatorios con expiración y revocación; sin coordenadas en DynamoDB."
   },
   "servers": [{"url": "http://127.0.0.1:8080", "description": "Frontend local con proxy a API Gateway en MiniStack"}],
   "security": [{"bearer": []}],
@@ -12,6 +12,235 @@
     {"name": "dispatch"}, {"name": "availability"}, {"name": "tracking"}, {"name": "analytics"}
   ],
   "paths": {
+    "/api/v1/orders/{orderId}/location": {
+      "post": {
+        "tags": [
+          "tracking"
+        ],
+        "summary": "Publicar última ubicación: solo repartidor asignado, ASSIGNED/PICKED_UP; mínimo 3 s",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrderId"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Correcto",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationAccepted"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocationPoint"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "tracking"
+        ],
+        "summary": "Ubicación: comercio propietario o repartidor asignado; FRESH hasta 30 s",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrderId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Correcto",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LatestLocation"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "tracking"
+        ],
+        "summary": "Dejar de compartir: repartidor asignado, elimina coordenadas efímeras",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrderId"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Correcto"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/tracking/{token}/location": {
+      "get": {
+        "tags": [
+          "tracking"
+        ],
+        "summary": "Ubicación pública mínima con token aleatorio válido, no revocado, menor a 24 h",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 257
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Correcto",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LatestLocation"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/v1/orders/{orderId}/tracking-token": {
+      "delete": {
+        "tags": [
+          "tracking"
+        ],
+        "summary": "Revocar enlace público: solo comercio propietario; idempotente",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrderId"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Correcto"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/auth/dev-login": {
       "post": {
         "tags": ["identity"], "summary": "Inicio de sesión de desarrollo (solo local)", "security": [],
@@ -211,6 +440,133 @@
       "Transition": {"description": "Pedido tras la transición", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Order"}}}}
     },
     "schemas": {
+      "LocationPoint": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "latitude",
+          "longitude",
+          "recordedAt",
+          "source"
+        ],
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90
+          },
+          "longitude": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
+          },
+          "accuracyMeters": {
+            "type": "number",
+            "minimum": 0
+          },
+          "recordedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC Z; edad máxima 120 s, futuro máximo 15 s"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "SIMULATED",
+              "BROWSER_GPS"
+            ]
+          }
+        }
+      },
+      "LatestLocation": {
+        "type": "object",
+        "required": [
+          "orderId",
+          "status",
+          "updatedAt",
+          "location",
+          "freshness"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "orderId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "updatedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "location": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "latitude",
+              "longitude",
+              "recordedAt",
+              "source"
+            ],
+            "properties": {
+              "latitude": {
+                "type": "number",
+                "minimum": -90,
+                "maximum": 90
+              },
+              "longitude": {
+                "type": "number",
+                "minimum": -180,
+                "maximum": 180
+              },
+              "accuracyMeters": {
+                "type": "number",
+                "minimum": 0
+              },
+              "recordedAt": {
+                "type": "string",
+                "format": "date-time",
+                "description": "UTC Z; edad máxima 120 s, futuro máximo 15 s"
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "SIMULATED",
+                  "BROWSER_GPS"
+                ]
+              }
+            },
+            "nullable": true
+          },
+          "freshness": {
+            "type": "string",
+            "enum": [
+              "FRESH",
+              "STALE",
+              "UNAVAILABLE"
+            ]
+          }
+        }
+      },
+      "LocationAccepted": {
+        "type": "object",
+        "required": [
+          "orderId",
+          "recordedAt",
+          "accepted"
+        ],
+        "properties": {
+          "orderId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "recordedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "accepted": {
+            "type": "boolean",
+            "description": "false para muestras fuera de orden; no renueva TTL"
+          }
+        }
+      },
       "Id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"},
       "Status": {"type": "string", "enum": ["PENDING", "ASSIGNED", "PICKED_UP", "DELIVERED", "CANCELLED", "FAILED"]},
       "Timestamp": {"type": "string", "example": "2026-11-13T15:04:05.123456Z"},

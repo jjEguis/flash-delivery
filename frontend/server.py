@@ -73,7 +73,10 @@ class Handler(SimpleHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
         if "/api/" in (args[0] if args else ""):
-            super().log_message(fmt, *args)
+            # Nunca registrar el token que forma parte de las rutas públicas.
+            import re
+            safe = tuple(re.sub(r"/tracking/[^/?\s]+", "/tracking/[redacted]", value) if isinstance(value, str) else value for value in args)
+            super().log_message(fmt, *safe)
 
 
 if __name__ == "__main__":

@@ -56,6 +56,8 @@ class Api:
         for order_id in self.created["orders"]:
             order = adapter.get_item(Key=serialize(keys.meta(order_id)), ConsistentRead=True).get("Item")
             doomed.append(keys.meta(order_id))
+            from lambdas.tracking.access import access_key
+            doomed.append(access_key(order_id))
             if order:
                 doomed.append(keys.store_view(order["storeId"]["S"], order_id))
             for c in self.created["couriers"]:
@@ -74,7 +76,11 @@ class Api:
         from lambdas.shared.infrastructure.clients import redis_client
         cache = redis_client()
         try:
+            from lambdas.tracking.location_store import location_key
+            for order_id in self.created["orders"]:
+                cache.delete(location_key(order_id), f"tracking:rate:order:{order_id}")
             for c in self.created["couriers"]:
+                cache.delete(f"tracking:rate:courier:{c}")
                 cache.delete(heartbeat_key(c))
                 cache.zrem(zone_key("centro"), c)
             for s in self.created["stores"]:

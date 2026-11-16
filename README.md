@@ -2,7 +2,7 @@
 
 Aplicación de entregas de última milla con DynamoDB (tabla única), Redis, Python, Lambda y API Gateway, ejecutada localmente sobre MiniStack. Los comercios publican pedidos, los repartidores de la zona compiten por aceptarlos y una transacción condicional garantiza que solo uno gane. El destinatario sigue su pedido con un enlace seguro.
 
-Estado: SPEC-00 a SPEC-07 implementadas, con API HTTP completa (27 operaciones), interfaz web con reintentos y paginación, y pruebas de backend y navegador. Consultar [especificaciones](docs/specs/README.md) y [validación](docs/validation.md).
+Estado: SPEC-00 a SPEC-08 implementadas, con API HTTP completa (32 operaciones), interfaz web con reintentos, paginación y ubicación opcional durante entregas activas, y pruebas de backend y navegador. Consultar [especificaciones](docs/specs/README.md) y [validación](docs/validation.md).
 
 ```text
 flash-delivery/
@@ -24,7 +24,7 @@ flash-delivery/
 │   │   └── integration/          # MiniStack y Redis reales, HTTP y concurrencia
 │   └── scripts/                  # provision, seed, demo, benchmark
 ├── docs/                         # arquitectura, modelo, OpenAPI, specs, evidencias
-└── frontend/                     # SPA sin dependencias + servidor con proxy
+└── frontend/                     # SPA funcional, diseño React, GPS y proxy
 ```
 
 Cada módulo de `app/lambdas/<módulo>/` contiene su repositorio, su servicio de aplicación y un `handler.py` con `main(event, context)`, que se despliega como una Lambda propia.
@@ -119,3 +119,9 @@ Documentación: [arquitectura](docs/ARQUITECTURA_GENERAL.md), [entorno y tests](
 ## Prototipo del nuevo diseño
 
 FE-00/FE-01 de diseño v2.1 están disponibles para revisión visual con datos simulados. Desde `frontend/`: `npm ci` y `npm run dev:preview` (Node 22.12+). Abrir http://127.0.0.1:5173/preview.html. Incluye comercio, repartidor, seguimiento, claro/oscuro y estados de ejemplo. [Guía y capturas](docs/frontend/FE-01-REVISION.md). La integración de este diseño con la API está pendiente.
+
+## Ubicación y mapas (SPEC-08)
+
+Desde `frontend/`, ejecutar `npm ci` y `npm run build:local` para habilitar los mapas y el simulador local en la aplicación :8080. Si cambió el backend, ejecutar antes `docker compose up -d --build --wait` y `docker compose exec -T cdk-dev python -m scripts.provision`.
+
+Crear un pedido nuevo, aceptarlo con un repartidor y abrir «Compartir ubicación». El comercio abre el mapa desde el detalle; el destinatario, desde su enlace de seguimiento. Solo se comparten posiciones durante entregas activas, con consentimiento, expiración y revocación. `npm run build` excluye los controles de simulación. [Flujo completo, pruebas y límites](docs/geo/README.md).
