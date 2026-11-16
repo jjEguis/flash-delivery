@@ -1,5 +1,9 @@
 # Registro de validación
 
+## Ajuste de selectores FE-01 — 2026-11-15
+
+Se asignan explícitamente fondo y texto de las opciones nativas a los tokens del tema, evitando texto claro sobre el fondo blanco del popup del sistema. Aplica a Apariencia, Vista y Estado. Se añaden dos pruebas de contraste calculado de todas las opciones y selección con teclado, en claro y oscuro. Resultado: **29 pruebas de navegador aprobadas**; compilación y lint correctos. La presentación final del popup nativo puede variar según navegador y sistema operativo.
+
 ## Diseño frontend v2.1 — FE-00/FE-01 — 2026-11-15
 
 Prototipo independiente con datos simulados; pendiente revisión visual del usuario. [Decisiones](frontend/FE-00-DISENO.md) y [capturas/flujo](frontend/FE-01-REVISION.md).

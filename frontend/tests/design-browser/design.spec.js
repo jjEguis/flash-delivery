@@ -139,3 +139,34 @@ test('el atributo de tema se aplica antes de arrancar React', async ({ page }) =
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await expect(page.locator('#design-root')).toBeEmpty();
 });
+
+for (const theme of ['light', 'dark']) {
+  test(`opciones nativas legibles en todos los selectores: ${theme}`, async ({ page }) => {
+    await page.addInitScript(theme => localStorage.setItem('flashdelivery:theme:v1', theme), theme);
+    await page.goto('/preview.html#/app/store');
+    await expect(page.getByRole('combobox', { name: 'Apariencia' })).toBeVisible();
+    const options = await page.locator('select option').evaluateAll(elements => elements.map(element => {
+      const style = getComputedStyle(element);
+      const rgb = value => value.match(/[\d.]+/g).slice(0, 3).map(Number);
+      const luminance = color => rgb(color).map(value => {
+        const channel = value / 255;
+        return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+      }).reduce((total, value, index) => total + value * [0.2126, 0.7152, 0.0722][index], 0);
+      const foreground = luminance(style.color);
+      const background = luminance(style.backgroundColor);
+      return { text: element.textContent, background: style.backgroundColor, contrast: (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05) };
+    }));
+    expect(options.length).toBeGreaterThan(3);
+    for (const option of options) {
+      expect(option.background, option.text).not.toBe('rgba(0, 0, 0, 0)');
+      expect(option.contrast, option.text).toBeGreaterThanOrEqual(4.5);
+    }
+    const appearance = page.getByRole('combobox', { name: 'Apariencia' });
+    await appearance.focus();
+    await appearance.press('Home');
+    await appearance.press('ArrowDown');
+    await appearance.press('Enter');
+    await expect(appearance).toHaveValue('light');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  });
+}
