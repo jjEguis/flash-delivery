@@ -65,8 +65,10 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith("/api/"):
             return self._proxy()
-        if self.path == "/" or not (ROOT / self.path.split("?")[0].lstrip("/")).is_file():
-            self.path = "/index.html"  # SPA con rutas por hash
+        if self.path.split("?")[0] in {"/", "/index.html"} or not (ROOT / self.path.split("?")[0].lstrip("/")).is_file():
+            if not (ROOT / 'design-dist/index.html').is_file():
+                return self._json(503, {"error": {"code": "FRONTEND_NOT_BUILT", "message": "Ejecuta npm ci y npm run build:local en frontend/", "requestId": "-"}})
+            self.path = "/design-dist/index.html"  # entrada funcional compilada
         return super().do_GET()
 
     do_POST = do_PATCH = do_DELETE = _proxy

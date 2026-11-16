@@ -1,5 +1,22 @@
 # Registro de validación
 
+## Unificación de toda la interfaz funcional — 2026-11-16
+
+Se aplica el diseño aprobado a acceso, registro/habilitación, comercio, repartidor, administración, seguimiento público y mapas en :8080. Se utiliza la skill local frontend-design, Manrope y los tokens/componentes compartidos. La vista de mapas se integra en la navegación principal; los enlaces anteriores redirigen. [Alcance y capturas](frontend/UNIFICACION.md).
+
+| Comprobación | Resultado |
+| --- | --- |
+| Compilación normal/local y lint | Correctos; entrada funcional incluida en Vite |
+| Unitarios de tema/componentes y HTTP/paginación | **7 + 22 passed** |
+| Regresión de navegador del cliente funcional | **10 passed**; reintentos con recarga y cursores conservados |
+| Vistas del diseño de referencia | **29 passed** |
+| Mapas y controles GPS | **15 passed** |
+| Compilación normal sin simulador | **1 passed** |
+| Interfaz funcional unificada | **57 passed**, 11.6 s: cinco vistas × ambos temas × cinco anchos, axe, menú/foco/Escape, registro/habilitación, mapa integrado, respuestas tardías y sesión/tema en memoria |
+| Flujo de navegador con API real | **1 passed**, 44.6 s: abrir mapas desde los pedidos reales de repartidor/comercio y seguimiento público, emitir el recorrido y completar la entrega |
+
+Se inspeccionaron las capturas de comercio y repartidor y se corrigió el desborde del formulario móvil causado por el ancho mínimo de la tabla. Se protegió la transición al mapa frente a respuestas pendientes de la vista anterior. La sesión y el tema se comparten sin depender de abrir otra pestaña. Las capturas de vistas generales usan fixtures explícitos; las de mapas provienen del smoke real. Se conservaron endpoints, persistencia y transacciones; no se repitieron pruebas backend o de carga local porque esta revisión modifica solo frontend, su servidor y documentación. CI ejecuta también el backend. No se realizó revisión humana con lector de pantalla ni GPS físico de teléfono.
+
 ## SPEC-08 — ubicación y seguimiento — 2026-11-15
 
 GEO-00 a GEO-05 implementadas. [Guía y limitaciones](geo/README.md), [verificación antes de implementar](geo/GEO-00.md), capturas reales de [comercio claro](evidencias/spec08/comercio-claro-1440.png) y [destinatario oscuro móvil](evidencias/spec08/destinatario-oscuro-390.png).

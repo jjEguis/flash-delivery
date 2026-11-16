@@ -5,14 +5,15 @@ import { ThemeSwitcher } from '../../app/AppShell';
 import { StatusBadge } from '../../components/ui';
 import type { OrderStatus } from '../../mocks/data';
 import { active, geoApi, GeoError, readSession } from './api';
-import type { Latest } from './api';
+import type { Latest, Session } from './api';
 import { LocationMap } from './LocationMap';
 import { useSharing } from './useSharing';
 
 const statuses: Record<string,string> = {PENDING:'Por asignar',ASSIGNED:'Asignada',PICKED_UP:'Recogida',DELIVERED:'Entregada',CANCELLED:'Cancelada',FAILED:'Fallida'};
-export function GeoPage({ publicView = false }: { publicView?: boolean }) {
-  const { id = '' } = useParams();
-  const [session] = useState(() => publicView ? null : readSession());
+export function GeoPage({ publicView = false, embedded = false, orderId, activeSession }: { publicView?: boolean; embedded?: boolean; orderId?: string; activeSession?: Session | null }) {
+  const { id: routeId = '' } = useParams();
+  const id = orderId ?? routeId;
+  const [session] = useState(() => publicView ? null : activeSession === undefined ? readSession() : activeSession);
   const [data,setData] = useState<Latest | null>(null);
   const [error,setError] = useState('');
   const [fatal,setFatal] = useState(false);
@@ -55,8 +56,9 @@ export function GeoPage({ publicView = false }: { publicView?: boolean }) {
     try { await geoApi(endpoint+'/tracking-token',session,'DELETE'); setRevokeMessage('Enlace revocado. El destinatario ya no puede consultarlo.'); }
     catch { setRevokeMessage('No se pudo revocar el enlace. Reintenta.'); }
   }
-  return <div className="geo-page"><header className="geo-header"><a href="/" className="design-brand"><Zap size={22} aria-hidden="true" />FlashDelivery</a><ThemeSwitcher /></header>
-    <main className="geo-main"><a className="geo-back" href={publicView ? '/#/seguimiento/'+encodeURIComponent(id) : '/#/'+(session?.actor.role==='COURIER'?'repartidor':'comercio')}><ArrowLeft size={16} aria-hidden="true" />Volver al pedido</a>
+  const Content = embedded ? 'div' : 'main';
+  return <div className={`geo-page ${embedded?'geo-embedded':''}`}>{!embedded && <header className="geo-header"><a href="/" className="design-brand"><Zap size={22} aria-hidden="true" />FlashDelivery</a><ThemeSwitcher /></header>}
+    <Content className="geo-main"><a className="geo-back" href={publicView ? '#/seguimiento/'+encodeURIComponent(id) : '#/'+(session?.actor.role==='COURIER'?'repartidor':'comercio')}><ArrowLeft size={16} aria-hidden="true" />Volver al pedido</a>
       <div className="geo-heading"><div><h1>{publicView ? data && active(data.status) ? 'Tu entrega, en camino.' : data && ['DELIVERED','CANCELLED','FAILED'].includes(data.status) ? 'El recorrido terminó.' : 'Sigue tu entrega.' : 'Seguimiento de la entrega'}</h1><p>Consulta la última ubicación compartida durante esta entrega.</p></div><MapPin size={28} aria-hidden="true" /></div>
       {loading && <p role="status">Consultando el estado de tu entrega…</p>}
       {error && <div className="geo-notice" role="alert">{error}<button className="button button-secondary" onClick={() => void refresh()}>Reintentar</button></div>}
@@ -82,5 +84,5 @@ export function GeoPage({ publicView = false }: { publicView?: boolean }) {
       </section> : <section className="geo-card"><h2>Seguimiento por estados</h2><p className="geo-muted">{data && !active(data.status)?'Esta entrega no está en recorrido. No se comparte ubicación.':'El repartidor decide cuándo compartir ubicación durante la entrega.'}</p><p>Sin GPS, el pedido puede avanzar normalmente.</p></section>}
       {!publicView && session?.actor.role==='STORE' && data && !fatal && <section className="geo-card"><h2>Enlace del destinatario</h2><p className="geo-muted">Revocarlo retira el acceso público a los estados y la ubicación.</p><button className="button button-danger" onClick={()=>void revoke()}>Revocar enlace público</button><p role="status">{revokeMessage}</p></section>}
       <p className="geo-privacy">Compartimos solo la última posición. Se elimina al terminar la entrega y vence automáticamente si deja de actualizarse. No almacenamos una trayectoria.</p></aside></div>
-    </main></div>;
+    </Content></div>;
 }

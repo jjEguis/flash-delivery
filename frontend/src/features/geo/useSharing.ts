@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { active, DEMO_ROUTE, geoApi, GeoError, readSession } from './api';
+import { active, DEMO_ROUTE, geoApi, GeoError } from './api';
 import type { Point, Session } from './api';
 
 type Mode = 'idle' | 'simulating' | 'paused' | 'gps' | 'finished';
@@ -33,7 +33,6 @@ export function useSharing(orderId: string, session: Session | null, status: str
   }, [halt, session, endpoint, onPoint]);
   const send = useCallback(async (point: Point, current: number) => {
     if (sending.current || generation.current !== current || !session) return false;
-    if (readSession()?.token !== session.token) { halt(); changeMode('idle'); return false; }
     sending.current = true;
     const controller = new AbortController(); request.current = controller;
     try {

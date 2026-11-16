@@ -6,7 +6,7 @@
 **Entorno actual:** MiniStack + Redis en Docker  
 **Arquitectura:** Monolito modular serverless (Python, Lambda, API Gateway, DynamoDB Single Table Design)
 
-Implementación y límites en [guía GEO](../geo/README.md); verificación previa en [GEO-00](../geo/GEO-00.md), resultados en [validación](../validation.md). Las coordenadas permanecen en Redis; los tokens nuevos incorporan credencial revocable sin índices en la tabla existente. La vista real se abre desde la aplicación :8080 y no reemplaza el prototipo FE-01.
+Implementación y límites en [guía GEO](../geo/README.md); verificación previa en [GEO-00](../geo/GEO-00.md), resultados en [validación](../validation.md). Las coordenadas permanecen en Redis; los tokens nuevos incorporan credencial revocable sin índices en la tabla existente. La aplicación funcional :8080 utiliza el diseño unificado de FE-01 en todas sus vistas; el prototipo queda como referencia visual. Los mapas forman parte de su navegación. [Unificación](../frontend/UNIFICACION.md).
 
 ## 1. Decisión arquitectónica
 

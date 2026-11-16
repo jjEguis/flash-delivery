@@ -15,7 +15,8 @@
     "build:local": "VITE_GEO_SIMULATOR=true npm run build",
     "test:geo:e2e": "playwright test --config playwright.geo.config.js",
     "test:geo:real": "playwright test --config playwright.geo-real.config.js",
-    "test:geo:production": "playwright test --config playwright.geo-production.config.js"
+    "test:geo:production": "playwright test --config playwright.geo-production.config.js",
+    "test:unified:e2e": "playwright test --config playwright.unified.config.js"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",

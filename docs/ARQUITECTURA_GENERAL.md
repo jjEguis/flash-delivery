@@ -161,7 +161,7 @@ flash-delivery/
 └── .env.example
 ```
 
-Los handlers de cada funcionalidad exponen `main(event, context)`; repositorios y casos de uso viven en su módulo. `frontend/api.js` gestiona HTTP e intenciones pendientes, y `frontend/pagination.js` el estado de las páginas del repartidor. Playwright es una dependencia de desarrollo: la SPA no requiere compilación para ejecutarse. Evitar carpetas vacías y capas artificiales: generar cada subcarpeta cuando tenga código real. `shared` contiene únicamente primitivas transversales y contrato físico de almacenamiento, nunca casos de uso de negocio.
+Los handlers de cada funcionalidad exponen `main(event, context)`; repositorios y casos de uso viven en su módulo. `frontend/api.js` gestiona HTTP e intenciones pendientes, y `frontend/pagination.js` el estado de las páginas del repartidor. Playwright se usa para desarrollo; Vite compila la entrada funcional antes de servirla. Evitar carpetas vacías y capas artificiales: generar cada subcarpeta cuando tenga código real. `shared` contiene únicamente primitivas transversales y contrato físico de almacenamiento, nunca casos de uso de negocio.
 
 ## 11. MiniStack: estrategia de validación y despliegue local
 
@@ -219,3 +219,7 @@ FE-00/FE-01 añaden una entrada React/TypeScript/Vite independiente en `frontend
 SPEC-08 incorpora POST/GET/DELETE de última ubicación y consulta pública con token en Tracking. Orders sigue siendo la autoridad de estado/asignación; Dispatch mantiene sus transacciones y limpia Redis tras terminar. `LocationStore` y `OrderReader` separan coordenadas efímeras de estado oficial. Redis conserva solo una posición por pedido (TTL 120 s), con Lua para orden temporal y frecuencia. No hay coordenadas en DynamoDB ni índices nuevos.
 
 El ítem adicional `ORDER#id / TRACKING` contiene nonce aleatorio, vencimiento y revocación del enlace; evita cambiar versiones de las proyecciones del pedido al revocarlo. GET público verifica hash, credencial y estado. Los tokens históricos no conceden permiso geográfico. La vista `frontend/geo.html` se compila con Vite y se sirve bajo :8080, con Leaflet, claro/oscuro, alternativa textual, simulador de desarrollo y GPS optativo. La aplicación funcional aporta los enlaces por actor. [Guía, seguridad y límites de concurrencia](geo/README.md).
+
+## Unificación visual funcional
+
+La entrada principal `frontend/index.html` se compila en `design-dist/index.html`, servida por el proxy en :8080. `src/live/Shell.tsx` reutiliza el sistema visual de FE-01 alrededor de las vistas funcionales existentes; los controladores HTTP, paginación e idempotencia se conservan. Todas las vistas usan tokens y fuente compartidos, tema persistente y navegación responsive. Los mapas se montan como parte del contenido y se desmontan al cambiar de ruta; el enlace antiguo a `geo.html` redirige a la ruta integrada. No existe una segunda interfaz geográfica independiente. [Decisiones](frontend/UNIFICACION.md).

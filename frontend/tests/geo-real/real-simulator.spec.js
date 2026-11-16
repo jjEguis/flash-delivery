@@ -16,17 +16,27 @@ test('simulador completo → API Gateway → Lambda → Redis → comercio y des
     const courier=await browser.newContext();contexts.push(courier);
     await courier.addInitScript(session=>localStorage.setItem('fd.session',JSON.stringify(session)),data.sessions.COURIER);
     const page=await courier.newPage();
-    await page.goto(`/design-dist/geo.html#/order/${data.order.orderId}`);
+    await page.goto('/#/repartidor');
+    await expect(page.getByRole('heading',{name:'Vamos con la próxima.'})).toBeVisible();
+    await page.getByRole('link',{name:'Compartir ubicación',exact:true}).click();
+    await expect(page).toHaveURL(new RegExp('#/ubicacion/'+data.order.orderId+'$'));
+    await expect(page.getByRole('banner')).toHaveCount(1);
     await page.getByRole('checkbox').check();
     await page.getByRole('button',{name:'Iniciar simulación'}).click();
     const publicContext=await browser.newContext();contexts.push(publicContext);
     const recipient=await publicContext.newPage();
-    await recipient.goto(`/design-dist/geo.html#/tracking/${encodeURIComponent(data.order.trackingToken)}`);
+    await recipient.goto(`/#/seguimiento/${encodeURIComponent(data.order.trackingToken)}`);
+    await recipient.getByRole('link',{name:'Ver ubicación compartida',exact:true}).click();
     await expect(recipient.getByText('Modo simulación · Recorrido ficticio')).toBeVisible({timeout:12000});
     const store=await browser.newContext();contexts.push(store);
     await store.addInitScript(session=>localStorage.setItem('fd.session',JSON.stringify(session)),data.sessions.STORE);
     const storePage=await store.newPage();
-    await storePage.goto(`/design-dist/geo.html#/order/${data.order.orderId}`);
+    await storePage.goto('/#/comercio');
+    await expect(storePage.getByRole('heading',{name:'Tu operación, al día.'})).toBeVisible();
+    await storePage.locator(`[data-order="${data.order.orderId}"]`).click({timeout:15000});
+    await storePage.getByRole('link',{name:'Ver ubicación de la entrega',exact:true}).click();
+    await expect(storePage).toHaveURL(new RegExp('#/ubicacion/'+data.order.orderId+'$'));
+    await expect(storePage.getByRole('dialog')).toHaveCount(0);
     await expect(storePage.getByRole('region',{name:'Mapa de la última ubicación'})).toBeVisible();
     await expect(page.getByText('Recorrido finalizado. Esto no marca el pedido como entregado.')).toBeVisible({timeout:45000});
     await expect(recipient.getByText(/Latitud 11.24320/)).toBeVisible({timeout:10000});
@@ -54,7 +64,7 @@ test('simulador completo → API Gateway → Lambda → Redis → comercio y des
     await expect(recipient.getByText('Aún no hay ubicación compartida')).toBeVisible({timeout:10000});
     await expect(storePage.getByText('Aún no hay ubicación compartida')).toBeVisible({timeout:10000});
   } finally {
-    for(const context of contexts) await context.close();
+    await Promise.allSettled(contexts.map(context=>context.close()));
     run('cleanup');rmdirSync(directory);
   }
 });

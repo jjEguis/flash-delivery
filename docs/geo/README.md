@@ -14,16 +14,16 @@ npm ci
 npm run build:local
 ```
 
-Abrir http://127.0.0.1:8080. La aplicación funcional incorpora enlaces a la nueva vista geográfica, compilada en `/design-dist/geo.html` con los temas del diseño aprobado. El prototipo FE-01 sigue siendo una demostración separada; esta entrega no convierte sus demás pantallas a API real.
+Abrir http://127.0.0.1:8080. La aplicación funcional completa se compila con Vite y utiliza el diseño aprobado. Los mapas se abren dentro de la misma navegación en `#/ubicacion/<id>` y `#/mapa/<token>`. Los enlaces antiguos a `/design-dist/geo.html` redirigen a esas rutas. El prototipo FE-01 permanece como referencia explícita en `preview.html`; :8080 usa exclusivamente los servicios reales.
 
 1. Comercio `tienda_demo`: crear un pedido nuevo y guardar el enlace de seguimiento. Si no existen los perfiles de demostración, ejecutar `docker compose exec -T cdk-dev python -m scripts.demo` antes de probar.
 2. En otro navegador o perfil, repartidor `rep_demo1`: activar disponibilidad y aceptar ese pedido. En «Pedido activo», abrir «Compartir ubicación».
-3. En la nueva pestaña, seleccionar simulación, marcar el consentimiento e iniciar. Se envían ocho puntos de prueba cada cuatro segundos a la API real. Pausar, reanudar y reiniciar conservan el contrato; detener borra la posición. Finalizar el recorrido no marca el pedido como entregado.
+3. En el panel de seguimiento, seleccionar simulación, marcar el consentimiento e iniciar. Se envían ocho puntos de prueba cada cuatro segundos a la API real. Pausar, reanudar y reiniciar conservan el contrato; detener borra la posición. Finalizar el recorrido no marca el pedido como entregado.
 4. En Comercio, abrir el detalle y «Ver ubicación de la entrega». El destinatario abre el enlace compartido y «Ver ubicación compartida». Ambas vistas consultan la posición cada cinco segundos y señalan «Modo simulación · Recorrido ficticio».
 5. Marcar recogido y entregado en la aplicación del repartidor. Los mapas dejan de mostrar coordenadas y el servidor rechaza nuevas muestras. También se limpia al cancelar o marcar fallido.
 6. Para GPS, elegir «GPS del navegador», marcar el consentimiento y activar. El navegador solicita permiso; denegarlo permite continuar por estados. Requiere HTTPS o localhost. Detener, cerrar la página o cambiar la sesión detiene el watcher; cerrar sesión en otra pestaña elimina la muestra mediante una petición de limpieza best effort.
 
-Las sesiones de la vista geográfica se leen del mismo origen que la aplicación funcional. Para probar las funciones reales usar :8080; la sesión de :8080 no se comparte con :5173. Cambiar de usuario implica volver a abrir la vista. Si se bloquea el almacenamiento del navegador, el cliente funcional conserva su sesión en memoria pero una pestaña geográfica nueva no puede recuperarla: deberá permitir almacenamiento para esta función. El cierre forzado del navegador puede impedir la petición de limpieza; el TTL y el estado oficial limitan el acceso.
+La vista geográfica recibe la sesión activa de la aplicación y comparte su selector de tema. Navegar al mapa y volver mantiene la sesión, incluso cuando el almacenamiento está bloqueado. Al navegar fuera del mapa se desmonta el watcher y se detienen sus temporizadores. Para probar el flujo real usar :8080; la sesión no se comparte entre orígenes. El cierre forzado del navegador puede impedir la petición de limpieza; el TTL y el estado oficial limitan el acceso.
 
 ## Arquitectura y datos
 
@@ -91,6 +91,7 @@ npm run test:design:e2e
 npm run test:e2e
 npm run test:geo:e2e
 npm run test:geo:production
+npm run test:unified:e2e
 npm run build:local
 npm run test:geo:real
 ```
@@ -98,3 +99,5 @@ npm run test:geo:real
 El último smoke requiere la API real, :8080, y Python local con boto3/python-dotenv (por defecto `../.venv/bin/python`, configurable con `GEO_PYTHON`). Crea actores/pedido aislados y limpia por claves exactas, incluidas credenciales de tracking y límites Redis. Sus credenciales temporales van a un archivo privado en `/tmp`, no a logs o capturas de trazas. Las pruebas unitarias usan moto/fakeredis con Lua mediante lupa. CI ejecuta unitarios, regresiones, mapas y la exclusión del simulador; las integraciones reales se seleccionan expresamente.
 
 Capturas del smoke con API real: [comercio claro](../evidencias/spec08/comercio-claro-1440.png), [destinatario oscuro móvil](../evidencias/spec08/destinatario-oscuro-390.png).
+
+La unificación visual posterior a la primera entrega de SPEC-08 está documentada en [UNIFICACION](../frontend/UNIFICACION.md). No cambia los contratos HTTP ni la persistencia.

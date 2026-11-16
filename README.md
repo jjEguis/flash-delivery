@@ -31,13 +31,15 @@ Cada módulo de `app/lambdas/<módulo>/` contiene su repositorio, su servicio de
 
 ## Inicio rápido
 
-Requisitos: Docker Engine con Compose v2. No necesitas cuenta ni credenciales AWS.
+Requisitos: Docker Engine con Compose v2 y Node 22.12+ con npm para compilar la interfaz. No necesitas cuenta ni credenciales AWS.
 
 ```bash
 cp -n .env.example .env
 docker compose up -d --build --wait
 docker compose exec -T cdk-dev python -m scripts.provision
 docker compose exec -T cdk-dev python -m scripts.demo
+npm --prefix frontend ci
+npm --prefix frontend run build:local
 ```
 
 Abre http://127.0.0.1:8080 y entra como:
@@ -84,6 +86,7 @@ Pruebas del frontend, desde `frontend/` (Node 22 y Python 3):
 
 ```bash
 npm ci
+npm run build
 npm test
 npx playwright install chromium
 npm run test:e2e          # Chromium de escritorio y vista móvil, con API simulada
@@ -125,3 +128,5 @@ FE-00/FE-01 de diseño v2.1 están disponibles para revisión visual con datos s
 Desde `frontend/`, ejecutar `npm ci` y `npm run build:local` para habilitar los mapas y el simulador local en la aplicación :8080. Si cambió el backend, ejecutar antes `docker compose up -d --build --wait` y `docker compose exec -T cdk-dev python -m scripts.provision`.
 
 Crear un pedido nuevo, aceptarlo con un repartidor y abrir «Compartir ubicación». El comercio abre el mapa desde el detalle; el destinatario, desde su enlace de seguimiento. Solo se comparten posiciones durante entregas activas, con consentimiento, expiración y revocación. `npm run build` excluye los controles de simulación. [Flujo completo, pruebas y límites](docs/geo/README.md).
+
+La aplicación de :8080 utiliza el diseño unificado en acceso, registro, comercio, repartidor, administración, seguimiento y mapas. Comparte Manrope, tokens, navegación y selector Sistema/Claro/Oscuro con la base visual aprobada. Los mapas se abren dentro de la misma interfaz, sin pestañas adicionales. [Alcance y capturas](docs/frontend/UNIFICACION.md).

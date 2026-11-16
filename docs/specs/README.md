@@ -21,3 +21,5 @@ El contrato vigente está en [OpenAPI](../api/openapi.json). Para nuevas funcion
 ## Diseño frontend v2.1
 
 [SPEC-07 de diseño v2.1](SPEC-07_FRONTEND_DESIGN_v2.1.md) es un trabajo adicional a la SPEC-07 de fiabilidad. FE-00/FE-01 implementadas como prototipo aislado, base visual aprobada y PR fusionado; FE-02 y siguientes pendientes. Consultar [decisiones](../frontend/FE-00-DISENO.md), [guía y capturas](../frontend/FE-01-REVISION.md). No está conectado a la API.
+
+La aplicación funcional adopta el [diseño unificado](../frontend/UNIFICACION.md) en :8080, incluidos mapas dentro de la navegación. El prototipo de diseño mantiene sus fixtures únicamente como referencia.
