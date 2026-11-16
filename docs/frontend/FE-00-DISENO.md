@@ -1,6 +1,6 @@
 # FE-00 — Decisiones de diseño
 
-Referencia de requisitos: [SPEC-07 diseño v2.1](../specs/SPEC-07_FRONTEND_DESIGN_v2.1.md). Referencia visual: [HTML aportado](../FlashDelivery%20%E2%80%94%20Demo%20de%20interfaz.html). FE-00 y FE-01 están implementadas para revisión visual; FE-02 y siguientes quedan pendientes.
+Referencia de requisitos: [SPEC-07 diseño v2.1](../specs/SPEC-07_FRONTEND_DESIGN_v2.1.md). Referencia visual: [HTML aportado](../FlashDelivery%20%E2%80%94%20Demo%20de%20interfaz.html). FE-00 y FE-01 están implementadas y su base visual fue aprobada; FE-02 y siguientes quedan pendientes.
 
 ## Dirección visual
 

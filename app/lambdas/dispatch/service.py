@@ -43,6 +43,9 @@ def _execute(adapter, actor, operation, order_id, request_id, build, cache=None,
     order = load_order(adapter, order_id)
     if after:
         after(order, cache)
+    if cache is not None and order["status"] in {"DELIVERED", "CANCELLED", "FAILED"}:
+        from lambdas.tracking.service import clear_finished
+        clear_finished(cache, order_id)
     return order_view(order, detail=True)
 
 
@@ -129,7 +132,7 @@ def _release_assignment(couriers, order, new):
              ConflictError("La asignación activa no corresponde a este pedido", "ACTIVE_MISMATCH"))]
 
 
-def cancel_order(adapter, actor: ActorContext, order_id, *, request_id):
+def cancel_order(adapter, actor: ActorContext, order_id, *, request_id, cache=None):
     """T5: el comercio propietario cancela en PENDING o ASSIGNED; nunca tras la recogida."""
     authorize(actor, "STORE")
     couriers = CouriersRepository(adapter)
@@ -143,10 +146,10 @@ def cancel_order(adapter, actor: ActorContext, order_id, *, request_id):
         new, pairs = build_transition(adapter, order, "CANCELLED", now)
         return pairs + _release_assignment(couriers, order, new), {"orderId": order_id, "status": "CANCELLED"}
 
-    return _execute(adapter, actor, "dispatch.cancel.v1", order_id, request_id, build)
+    return _execute(adapter, actor, "dispatch.cancel.v1", order_id, request_id, build, cache=cache)
 
 
-def fail_order(adapter, actor: ActorContext, order_id, *, request_id):
+def fail_order(adapter, actor: ActorContext, order_id, *, request_id, cache=None):
     """Procedimiento excepcional: solo ADMIN marca FAILED un pedido recogido."""
     authorize(actor, "ADMIN")
     couriers = CouriersRepository(adapter)
@@ -156,4 +159,4 @@ def fail_order(adapter, actor: ActorContext, order_id, *, request_id):
         new, pairs = build_transition(adapter, order, "FAILED", now)
         return pairs + _release_assignment(couriers, order, new), {"orderId": order_id, "status": "FAILED"}
 
-    return _execute(adapter, actor, "dispatch.fail.v1", order_id, request_id, build)
+    return _execute(adapter, actor, "dispatch.fail.v1", order_id, request_id, build, cache=cache)

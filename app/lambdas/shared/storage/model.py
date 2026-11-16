@@ -6,6 +6,7 @@ from boto3.dynamodb.types import TypeSerializer, TypeDeserializer
 from lambdas.shared.storage import keys
 
 REQUIRED = {
+    "TRACKING_ACCESS": {"orderId", "nonce", "expiresAt", "revoked"},
     "STORE": {"storeId", "ownerId", "zoneId", "name", "enabled", "createdAt", "updatedAt"},
     "COURIER": {"courierId", "ownerId", "zoneId", "name", "enabled", "available", "createdAt", "updatedAt"},
     "ORDER": {"orderId", "storeId", "zoneId", "status", "createdAt", "updatedAt", "pickupAddress",
@@ -67,6 +68,8 @@ def validate_key(item, pk="PK", sk="SK"):
 
 def layout(kind, data):
     """Claves calculadas: el llamador nunca puede inyectar índices arbitrarios."""
+    if kind == "TRACKING_ACCESS":
+        return {"PK": keys.order(data["orderId"]), "SK": "TRACKING"}
     if kind == "STORE":
         return keys.profile(keys.store(data["storeId"]))
     if kind == "COURIER":
@@ -118,6 +121,11 @@ def validate(item):
             raise ValueError(f"{name} debe estar en UTC con seis decimales y sufijo Z")
     if "status" in item:
         keys.status(item["status"])
+    if kind == "TRACKING_ACCESS":
+        if not isinstance(item["nonce"], str) or not re.fullmatch(r"[A-Za-z0-9_-]{43}", item["nonce"]):
+            raise ValueError("Nonce inválido")
+        if type(item["expiresAt"]) is not int or item["expiresAt"] <= 0 or type(item["revoked"]) is not bool:
+            raise ValueError("Expiración/revocación inválida")
     for name in ("enabled", "available"):
         if name in item and type(item[name]) is not bool:
             raise ValueError(f"{name} debe ser booleano")

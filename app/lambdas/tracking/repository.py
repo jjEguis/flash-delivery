@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import re
 import secrets
+import time
 from typing import Protocol
 from lambdas.shared.storage import keys
 from lambdas.shared.storage.repository import Page
@@ -24,7 +25,7 @@ class TrackingRepository:
     def __init__(self, orders: OrderReader):
         self.orders = orders
 
-    def get_tracking(self, token, *, limit=25, cursor=None):
+    def resolve_order(self, token, *, location=False):
         if not isinstance(token, str) or len(token) > 257 or token.count(".") != 1:
             return None
         order_id, secret = token.split(".")
@@ -35,6 +36,20 @@ class TrackingRepository:
         order = self.orders.get_order(order_id)
         if not order or not hmac.compare_digest(digest, order["trackingTokenHash"]):
             return None
+        from lambdas.tracking.access import TrackingAccess
+        adapter = getattr(self.orders, "adapter", None)
+        access = TrackingAccess(adapter).for_order(order_id) if adapter else None
+        if access and (access["revoked"] or access["expiresAt"] <= time.time()):
+            return None
+        if location and not access:
+            return None  # tokens históricos no conceden permiso geográfico
+        return order
+
+    def get_tracking(self, token, *, limit=25, cursor=None):
+        order = self.resolve_order(token)
+        if order is None:
+            return None
+        order_id = order["orderId"]
         events = self.orders.list_events(order_id, limit=limit, cursor=cursor)
         return {"orderId": order_id, "status": order["status"], "updatedAt": order["updatedAt"],
                 "events": [{"eventType": event["eventType"], "occurredAt": event["occurredAt"]}

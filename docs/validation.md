@@ -1,5 +1,40 @@
 # Registro de validación
 
+## Unificación de toda la interfaz funcional — 2026-11-16
+
+Se aplica el diseño aprobado a acceso, registro/habilitación, comercio, repartidor, administración, seguimiento público y mapas en :8080. Se utiliza la skill local frontend-design, Manrope y los tokens/componentes compartidos. La vista de mapas se integra en la navegación principal; los enlaces anteriores redirigen. [Alcance y capturas](frontend/UNIFICACION.md).
+
+| Comprobación | Resultado |
+| --- | --- |
+| Compilación normal/local y lint | Correctos; entrada funcional incluida en Vite |
+| Unitarios de tema/componentes y HTTP/paginación | **7 + 22 passed** |
+| Regresión de navegador del cliente funcional | **10 passed**; reintentos con recarga y cursores conservados |
+| Vistas del diseño de referencia | **29 passed** |
+| Mapas y controles GPS | **15 passed** |
+| Compilación normal sin simulador | **1 passed** |
+| Interfaz funcional unificada | **57 passed**, 11.6 s: cinco vistas × ambos temas × cinco anchos, axe, menú/foco/Escape, registro/habilitación, mapa integrado, respuestas tardías y sesión/tema en memoria |
+| Flujo de navegador con API real | **1 passed**, 44.6 s: abrir mapas desde los pedidos reales de repartidor/comercio y seguimiento público, emitir el recorrido y completar la entrega |
+
+Se inspeccionaron las capturas de comercio y repartidor y se corrigió el desborde del formulario móvil causado por el ancho mínimo de la tabla. Se protegió la transición al mapa frente a respuestas pendientes de la vista anterior. La sesión y el tema se comparten sin depender de abrir otra pestaña. Las capturas de vistas generales usan fixtures explícitos; las de mapas provienen del smoke real. CI detectó y permitió corregir que el proxy Vite capturaba `api.js`: ahora solo se proxifica `/api/`. La suite de mapas apunta deliberadamente a un backend inaccesible y usa exclusivamente la API interceptada. Se conservaron endpoints, persistencia y transacciones; no se repitieron pruebas backend o de carga local porque esta revisión modifica solo frontend, su servidor y documentación. CI ejecuta también el backend. No se realizó revisión humana con lector de pantalla ni GPS físico de teléfono.
+
+## SPEC-08 — ubicación y seguimiento — 2026-11-15
+
+GEO-00 a GEO-05 implementadas. [Guía y limitaciones](geo/README.md), [verificación antes de implementar](geo/GEO-00.md), capturas reales de [comercio claro](evidencias/spec08/comercio-claro-1440.png) y [destinatario oscuro móvil](evidencias/spec08/destinatario-oscuro-390.png).
+
+| Comprobación ejecutada | Resultado |
+| --- | --- |
+| MiniStack 1.5.36 / Redis 7.4.2, antes de implementar | DescribeTable ACTIVE, get_routes 30, Lambda Python 3.12, EVAL correcto y **2 flujos HTTP reales aprobados** |
+| Suite Python moto/fakeredis con Lua | **126 passed, 17 deselected**, 15.40 s |
+| Integraciones GPS + flujos API existentes | **4 passed**, 12.56 s: permisos, expiración/limpieza, concurrencia Lua y TTL real; API Gateway → Lambda → DynamoDB/Redis |
+| `build`, `build:local`, `lint` | Correctos: compilación normal y local, TypeScript y ESLint |
+| Unitarios frontend existentes y diseño | **22 + 7 passed** |
+| Navegador de frontend existente y FE-01 | **10 + 29 passed** |
+| Mapas y controles GPS con API interceptada | **15 passed**: claro/oscuro, 360/390/768/1440, axe, consentimiento, GPS denegado, sesión, simulador, datos obsoletos y fallos Redis/tiles |
+| Compilación normal sin simulador | **1 passed**: solo GPS optativo, sin controles de simulación |
+| Navegador con API real | **1 passed**, 42.3 s: ocho puntos por HTTP, mapa de comercio/destinatario, fin del recorrido y eliminación al entregar; datos de prueba limpiados |
+
+Se actualizó el stack local y se reinició el proxy para aplicar redacción de tokens. El smoke real no intercepta API ni tiles; las capturas muestran el mapa recibido de OSM. Las suites automáticas no prueban un sensor GPS físico ni certifican accesibilidad humana. Redis/DynamoDB no son una transacción distribuida; las lecturas comprueban META, hay revalidación tras escribir y TTL de respaldo. No se repitieron carga 10k ni carrera de 100 aceptaciones porque no se cambió la asignación transaccional. CI incluye las suites GPS simuladas y la exclusión del simulador; la integración real se selecciona explícitamente.
+
 ## Ajuste de selectores FE-01 — 2026-11-15
 
 Se asignan explícitamente fondo y texto de las opciones nativas a los tokens del tema, evitando texto claro sobre el fondo blanco del popup del sistema. Aplica a Apariencia, Vista y Estado. Se añaden dos pruebas de contraste calculado de todas las opciones y selección con teclado, en claro y oscuro. Resultado: **29 pruebas de navegador aprobadas**; compilación y lint correctos. La presentación final del popup nativo puede variar según navegador y sistema operativo.

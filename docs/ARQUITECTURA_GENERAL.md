@@ -4,13 +4,13 @@
 
 **Versión:** 1.1 · **Estado:** propuesta base para implementación · **Fecha:** 2026-11-12
 
-**Implementación actual:** SPEC-00 a SPEC-07 implementadas: modelo de persistencia, comandos transaccionales, API, presencia/caché, evidencias de calidad y frontend. El [contrato físico](data-model/README.md) y el [OpenAPI](api/openapi.json) concretan datos y operaciones. SPEC-07 documenta los [reintentos y pruebas de la SPA](specs/SPEC-07-FRONTEND-FIABILIDAD.md).
+**Implementación actual:** SPEC-00 a SPEC-08 implementadas: modelo de persistencia, comandos transaccionales, API, presencia/caché, evidencias de calidad y frontend. El [contrato físico](data-model/README.md) y el [OpenAPI](api/openapi.json) concretan datos y operaciones. SPEC-07 documenta los [reintentos y pruebas de la SPA](specs/SPEC-07-FRONTEND-FIABILIDAD.md).
 
 ## 1. Propósito y alcance
 
 FlashDelivery coordina entregas de última milla. Un comercio crea una solicitud; los repartidores habilitados y disponibles de la zona la visualizan y compiten por aceptarla. La aceptación se confirma de manera atómica y solo puede ganar un repartidor. El destinatario consulta el estado mediante un token de seguimiento.
 
-**MVP:** alta y habilitación de comercios/repartidores; disponibilidad y heartbeat; creación, consulta, aceptación, recogida, entrega y cancelación de pedidos; seguimiento; métricas básicas. **No incluye:** pagos, marketplace, mapas/GPS en tiempo real, optimización de rutas, múltiples pedidos activos por repartidor, notificaciones push.
+**MVP:** alta y habilitación de comercios/repartidores; disponibilidad y heartbeat; creación, consulta, aceptación, recogida, entrega y cancelación de pedidos; seguimiento; métricas básicas. **No incluye:** pagos, marketplace, GPS en segundo plano, optimización de rutas, múltiples pedidos activos por repartidor, notificaciones push.
 
 **Decisión vigente:** desarrollar, ejecutar y probar únicamente con **MiniStack** y Redis local. Despliegue en AWS real es una intención futura, **no forma parte de esta fase**. La compatibilidad de MiniStack con API Gateway, Lambda, DynamoDB, GSI, TransactWriteItems y CDK debe validarse mediante una prueba de capacidad antes de depender de ella. No asumir equivalencia con LocalStack.
 
@@ -161,7 +161,7 @@ flash-delivery/
 └── .env.example
 ```
 
-Los handlers de cada funcionalidad exponen `main(event, context)`; repositorios y casos de uso viven en su módulo. `frontend/api.js` gestiona HTTP e intenciones pendientes, y `frontend/pagination.js` el estado de las páginas del repartidor. Playwright es una dependencia de desarrollo: la SPA no requiere compilación para ejecutarse. Evitar carpetas vacías y capas artificiales: generar cada subcarpeta cuando tenga código real. `shared` contiene únicamente primitivas transversales y contrato físico de almacenamiento, nunca casos de uso de negocio.
+Los handlers de cada funcionalidad exponen `main(event, context)`; repositorios y casos de uso viven en su módulo. `frontend/api.js` gestiona HTTP e intenciones pendientes, y `frontend/pagination.js` el estado de las páginas del repartidor. Playwright se usa para desarrollo; Vite compila la entrada funcional antes de servirla. Evitar carpetas vacías y capas artificiales: generar cada subcarpeta cuando tenga código real. `shared` contiene únicamente primitivas transversales y contrato físico de almacenamiento, nunca casos de uso de negocio.
 
 ## 11. MiniStack: estrategia de validación y despliegue local
 
@@ -212,4 +212,14 @@ Cada SPEC debe aprobarse con pruebas y criterios de aceptación antes de iniciar
 
 ## Prototipo de diseño frontend v2.1
 
-FE-00/FE-01 añaden una entrada React/TypeScript/Vite independiente en `frontend/preview.html`, con providers de tema y datos simulados, componentes compartidos y vistas por actor. Se ejecuta en :5173 y compila a `frontend/design-dist/`; la SPA funcional y el proxy :8080 siguen siendo la ruta integrada con API Gateway. El prototipo no realiza solicitudes a la API. [Decisiones y brechas](frontend/FE-00-DISENO.md), [estado de revisión](frontend/FE-01-REVISION.md). FE-02 y siguientes pendientes de aprobación visual.
+FE-00/FE-01 añaden una entrada React/TypeScript/Vite independiente en `frontend/preview.html`, con providers de tema y datos simulados, componentes compartidos y vistas por actor. Se ejecuta en :5173 y compila a `frontend/design-dist/`; la SPA funcional y el proxy :8080 siguen siendo la ruta integrada con API Gateway. El prototipo no realiza solicitudes a la API. [Decisiones y brechas](frontend/FE-00-DISENO.md), [estado de revisión](frontend/FE-01-REVISION.md). FE-02 y siguientes pendientes; la base visual FE-01 fue aprobada por el usuario.
+
+## Seguimiento geográfico de entregas activas
+
+SPEC-08 incorpora POST/GET/DELETE de última ubicación y consulta pública con token en Tracking. Orders sigue siendo la autoridad de estado/asignación; Dispatch mantiene sus transacciones y limpia Redis tras terminar. `LocationStore` y `OrderReader` separan coordenadas efímeras de estado oficial. Redis conserva solo una posición por pedido (TTL 120 s), con Lua para orden temporal y frecuencia. No hay coordenadas en DynamoDB ni índices nuevos.
+
+El ítem adicional `ORDER#id / TRACKING` contiene nonce aleatorio, vencimiento y revocación del enlace; evita cambiar versiones de las proyecciones del pedido al revocarlo. GET público verifica hash, credencial y estado. Los tokens históricos no conceden permiso geográfico. La vista `frontend/geo.html` se compila con Vite y se sirve bajo :8080, con Leaflet, claro/oscuro, alternativa textual, simulador de desarrollo y GPS optativo. La aplicación funcional aporta los enlaces por actor. [Guía, seguridad y límites de concurrencia](geo/README.md).
+
+## Unificación visual funcional
+
+La entrada principal `frontend/index.html` se compila en `design-dist/index.html`, servida por el proxy en :8080. `src/live/Shell.tsx` reutiliza el sistema visual de FE-01 alrededor de las vistas funcionales existentes; los controladores HTTP, paginación e idempotencia se conservan. Todas las vistas usan tokens y fuente compartidos, tema persistente y navegación responsive. Los mapas se montan como parte del contenido y se desmontan al cambiar de ruta; el enlace antiguo a `geo.html` redirige a la ruta integrada. No existe una segunda interfaz geográfica independiente. [Decisiones](frontend/UNIFICACION.md).

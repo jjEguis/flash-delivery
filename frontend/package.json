@@ -11,33 +11,40 @@
     "preview": "vite preview --host 127.0.0.1 --port 5173 --strictPort",
     "lint": "eslint src vite.config.ts",
     "test:design": "vitest run",
-    "test:design:e2e": "playwright test --config playwright.design.config.js"
+    "test:design:e2e": "playwright test --config playwright.design.config.js",
+    "build:local": "VITE_GEO_SIMULATOR=true npm run build",
+    "test:geo:e2e": "playwright test --config playwright.geo.config.js",
+    "test:geo:real": "playwright test --config playwright.geo-real.config.js",
+    "test:geo:production": "playwright test --config playwright.geo-production.config.js",
+    "test:unified:e2e": "playwright test --config playwright.unified.config.js"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@eslint/js": "10.0.1",
     "@playwright/test": "1.65.1",
-    "vite": "8.3.8",
-    "@vitejs/plugin-react": "5.2.0",
-    "typescript": "6.0.3",
-    "@types/react": "19.3.0",
-    "@types/react-dom": "19.3.0",
-    "@types/node": "26.6.6",
-    "vitest": "5.1.0",
+    "@testing-library/jest-dom": "7.0.1",
     "@testing-library/react": "16.3.3",
     "@testing-library/user-event": "14.6.10",
-    "@testing-library/jest-dom": "7.0.1",
-    "jsdom": "31.0.1",
+    "@types/leaflet": "1.9.21",
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "5.2.0",
     "eslint": "10.15.0",
-    "typescript-eslint": "8.72.2",
-    "@eslint/js": "10.0.1",
     "eslint-plugin-react-hooks": "7.1.1",
-    "@axe-core/playwright": "4.14.0"
+    "jsdom": "31.0.1",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.2",
+    "vite": "8.3.8",
+    "vitest": "5.1.0"
   },
   "dependencies": {
+    "@fontsource/manrope": "5.3.0",
+    "leaflet": "1.9.4",
+    "lucide-react": "1.73.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "react-router-dom": "7.18.5",
-    "lucide-react": "1.73.0",
-    "@fontsource/manrope": "5.3.0"
+    "react-router-dom": "7.18.5"
   },
   "overrides": {
     "minimatch": "11.0.8"

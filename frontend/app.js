@@ -1,9 +1,11 @@
 import { createApiClient, validPage, validCreatedOrder } from "./api.js";
 import { createPagedList } from "./pagination.js";
+import { installShell, updateShell, updateProfile } from "./src/live/Shell.tsx";
+import { mountGeo } from "./src/features/geo/mount.tsx";
 
 // FlashDelivery — SPA sin dependencias. Habla con /api/v1 a través del proxy local.
 const $ = (sel, el = document) => el.querySelector(sel);
-const app = $("#app");
+const app = installShell();
 const SESSION_KEY = "fd.session";
 const TOKENS_KEY = "fd.trackingTokens";
 const STATUS = {
@@ -16,6 +18,8 @@ const EVENT_LABEL = {
 };
 let timers = [];
 let zonesCache = null;
+let disposeGeo = null;
+let viewVersion = 0;
 
 // ---------- utilidades ----------
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -58,11 +62,8 @@ function logout(expired) {
 }
 
 function nav() {
-  const el = $("#nav");
-  if (!session) { el.innerHTML = `<a href="#/seguimiento">Seguir un pedido</a>`; return; }
-  const role = { STORE: "Comercio", COURIER: "Repartidor", ADMIN: "Administración" }[session.actor.role];
-  el.innerHTML = `<span class="who">${esc(role)} · ${esc(session.actor.actorId)}</span>
-    <a href="#/seguimiento">Seguimiento</a><button type="button" data-act="logout">Salir</button>`;
+  const route = location.hash.split('/')[1] || '';
+  updateShell(session, route);
 }
 
 function guard(fn) {
@@ -80,42 +81,19 @@ function guard(fn) {
 // ---------- inicio ----------
 function home() {
   app.innerHTML = `
-    <section class="hero">
-      <h1>Entregas de última milla, sin dobles asignaciones</h1>
-      <p>Los comercios publican pedidos, los repartidores de la zona compiten por aceptarlos y solo uno gana.
-        El destinatario sigue su pedido con un enlace seguro.</p>
-      <div class="chips"><span class="chip">DynamoDB tabla única</span><span class="chip">Transacciones atómicas</span>
-        <span class="chip">Presencia en Redis</span><span class="chip">Caché de estadísticas</span></div>
-    </section>
-    <div class="layout">
-      <section class="card">
-        <div class="card__head"><h2>¿Cómo quieres entrar?</h2></div>
-        <div class="grid grid--roles" role="group" aria-label="Rol">
-          ${[["STORE", "Comercio", "Publica pedidos y sigue tus entregas"],
-             ["COURIER", "Repartidor", "Conéctate y acepta pedidos de tu zona"],
-             ["ADMIN", "Administración", "Habilita comercios y repartidores"]]
-            .map(([role, title, text], i) => `<button type="button" class="option" data-role="${role}" aria-pressed="${i === 0}">
-              <b>${title}</b><span class="muted">${text}</span></button>`).join("")}
-        </div>
-        <form id="login">
-          <label for="userId">Usuario</label>
-          <input id="userId" name="userId" required maxlength="64" pattern="[A-Za-z0-9_\\-]+" autocomplete="username"
-            placeholder="por ejemplo tienda_centro" value="${esc(load("fd.lastUser", ""))}">
-          <div id="adminCode" hidden>
-            <label for="code">Código de administrador</label>
-            <input id="code" name="code" type="password" autocomplete="off" placeholder="DEV_ADMIN_CODE">
-          </div>
-          <button class="btn btn--block" type="submit">Entrar</button>
-          <p class="muted" style="margin-top:10px">Acceso de desarrollo local: el servidor firma un token para el usuario y rol elegidos.</p>
-        </form>
-      </section>
-      <aside class="card sticky">
-        <h2>Seguir un pedido</h2>
-        <p class="muted" style="margin-top:6px">Pega el enlace o el código que te compartió el comercio.</p>
-        <form id="trackForm"><label for="token">Código de seguimiento</label>
-          <input id="token" required placeholder="o_….xxxx"><button class="btn btn--block btn--ghost">Ver estado</button></form>
-      </aside>
-    </div>`;
+    <section class="auth-heading"><p class="page-context">Tu espacio de entregas</p><h1>Todo listo para tu próxima entrega.</h1>
+      <p>Publica un pedido, encuentra un repartidor de tu zona y sigue cada paso hasta su destino.</p></section>
+    <div class="layout auth-layout"><section class="card"><div class="card__head"><h2>¿Cómo quieres entrar?</h2></div>
+      <div class="grid grid--roles" role="group" aria-label="Rol">
+        ${[["STORE","Comercio","Publica y gestiona tus entregas"],["COURIER","Repartidor","Organiza tu jornada y acepta pedidos"],["ADMIN","Administración","Gestiona perfiles y pedidos"]].map(([role,title,text],i)=>`<button type="button" class="option" data-role="${role}" aria-pressed="${i===0}"><b>${title}</b><span class="muted">${text}</span></button>`).join('')}
+      </div>
+      <form id="login"><label for="userId">Usuario</label><input id="userId" name="userId" required maxlength="64" pattern="[A-Za-z0-9_\\-]+" autocomplete="username" placeholder="Tu usuario" value="${esc(load('fd.lastUser',''))}">
+        <div id="adminCode" hidden><label for="code">Código de administrador</label><input id="code" name="code" type="password" autocomplete="off"></div>
+        <button class="btn btn--block" type="submit">Entrar</button><p class="muted" style="margin-top:12px">Acceso al entorno de demostración local.</p>
+      </form></section>
+      <aside class="card auth-help"><h2>¿Esperas una entrega?</h2><p class="muted" style="margin-top:12px">Consulta su avance con el enlace que te compartió el comercio.</p>
+        <form id="trackForm"><label for="token">Código de seguimiento</label><input id="token" required placeholder="Pega tu enlace o código"><button class="btn btn--block">Ver estado</button></form>
+      </aside></div>`;
   let role = "STORE";
   app.querySelectorAll("[data-role]").forEach((b) => b.addEventListener("click", () => {
     role = b.dataset.role;
@@ -144,7 +122,7 @@ function home() {
 async function registration(kind) {
   const list = await zones();
   app.innerHTML = `<section class="card" style="max-width:560px;margin:0 auto">
-    <h2>${kind === "store" ? "Registra tu comercio" : "Registra tu perfil de repartidor"}</h2>
+    <h1>${kind === "store" ? "Registra tu comercio" : "Registra tu perfil de repartidor"}</h1>
     <p class="muted" style="margin-top:6px">Un administrador debe habilitarlo antes de ${kind === "store" ? "publicar pedidos" : "aceptar pedidos"}.</p>
     <form id="reg"><label for="name">Nombre</label><input id="name" required maxlength="120">
       <label for="zone">Zona</label><select id="zone">${list.map((z) => `<option value="${esc(z.zoneId)}">${esc(z.name)}</option>`).join("")}</select>
@@ -159,7 +137,7 @@ async function registration(kind) {
 
 function waiting(kind, id) {
   app.innerHTML = `<section class="card" style="max-width:560px;margin:0 auto">
-    <div class="notice">Tu ${kind} está pendiente de habilitación.</div>
+    <h1>Tu registro está en revisión</h1><div class="notice" style="margin-top:20px">Tu ${kind} está pendiente de habilitación.</div>
     <p>Comparte este identificador con un administrador:</p>
     <p class="mono" style="margin:10px 0 4px;font-size:1.1rem">${esc(id)}</p>
     <button class="btn btn--block btn--ghost" data-act="reload">Ya me habilitaron, actualizar</button></section>`;
@@ -174,49 +152,37 @@ async function profile(path, kind) {
 
 // ---------- comercio ----------
 async function storeView() {
+  const owner = viewVersion;
   await zones();
+  if (owner !== viewVersion) return;
   const store = await profile("/stores/me", "store");
-  if (!store) return;
+  if (owner !== viewVersion || !store) return;
   if (!store.enabled) return waiting("comercio", store.storeId);
+  updateProfile(store.name, zoneName(store.zoneId));
   const ui = { filter: "", cursor: null, items: [] };
+  const monthLabel = new Intl.DateTimeFormat('es-CO',{month:'long',timeZone:'UTC'}).format(new Date(month()+'-01T00:00:00Z'));
   app.innerHTML = `
-    <div class="card__head"><div><h1 style="font-size:2rem">${esc(store.name)}</h1>
-      <p class="muted">Zona ${esc(zoneName(store.zoneId))} · <span class="mono">${esc(store.storeId)}</span></p></div></div>
-    <div class="layout">
-      <div>
-        <section class="card">
-          <div class="card__head"><h2>Tus pedidos</h2>
-            <div class="chips filters" role="group" aria-label="Filtrar por estado">
-              ${["", ...Object.keys(STATUS)].map((s) => `<button type="button" class="chip" data-filter="${s}" aria-pressed="${s === ""}">${s ? STATUS[s] : "Todos"}</button>`).join("")}
-            </div></div>
-          <div class="list" id="orders"></div>
-          <button class="btn btn--block btn--ghost" id="more" hidden>Cargar más</button>
-        </section>
-        <section class="card"><div class="card__head"><h2>Repartidores conectados en tu zona</h2>
-          <button class="btn btn--sm btn--ghost" id="refreshPresence">Actualizar</button></div>
-          <div class="list" id="presence"></div>
-          <p class="muted" style="margin-top:10px">Presencia efímera en Redis (heartbeat con TTL). No decide asignaciones.</p></section>
-      </div>
-      <aside class="sticky">
-        <section class="card"><h2>Nuevo pedido</h2>
-          <form id="newOrder">
-            <label for="pickup">Recoger en</label><input id="pickup" required maxlength="300" placeholder="Dirección del comercio">
-            <label for="dropoff">Entregar en</label><input id="dropoff" required maxlength="300" placeholder="Dirección del cliente">
-            <label for="fee">Tarifa (COP)</label><input id="fee" required type="number" min="100" max="100000000" step="100" value="8000">
-            <div class="highlight"><span>Total a pagar al repartidor</span><strong id="feeView">$8.000</strong></div>
-            <button class="btn btn--block btn--accent">Publicar pedido</button>
-          </form></section>
-        <section class="card"><div class="card__head"><h2>Este mes</h2><span id="src" class="badge"></span></div>
-          <div class="stats"><div class="stat"><span class="muted">Entregados</span><strong id="delivered">—</strong></div>
-            <div class="stat"><span class="muted">Facturado</span><strong id="billed">—</strong></div></div>
-          <button class="btn btn--block btn--ghost btn--sm" id="refreshStats">Consultar de nuevo</button>
-          <p class="muted" style="margin-top:10px">La primera consulta lee DynamoDB y guarda una copia en Redis; las siguientes salen de caché hasta que una entrega la invalida.</p></section>
-      </aside>
-    </div>`;
-
-  const row = (o) => `<button type="button" class="item" data-order="${esc(o.orderId)}">
-      <span><b>${esc(o.pickupAddress || "Pedido")}</b><br><span class="id">${esc(o.orderId)}</span></span>${badge(o.status)}
-      <span class="meta"><span>${when(o.createdAt)}</span>${o.feeMinor ? `<span>${money(o.feeMinor)}</span>` : ""}${o.courierId ? `<span>Repartidor ${esc(o.courierId)}</span>` : ""}</span></button>`;
+    <div class="live-heading"><div><p class="page-context">${esc(store.name)} · ${esc(zoneName(store.zoneId))}</p><h1>Tu operación, al día.</h1><p>Un vistazo a tus entregas. Tú decides el siguiente paso.</p></div>
+      <a class="btn" href="#/comercio" data-new-delivery>Nueva entrega</a></div>
+    <section class="metrics-strip" aria-label="Resumen de entregas">
+      <div class="metric"><span class="metric-label">Pedidos en esta vista</span><strong id="visibleOrders">—</strong><span class="metric-detail">Filas cargadas con el filtro actual</span></div>
+      <div class="metric"><span class="metric-label">Entregados en ${esc(monthLabel)}</span><strong id="delivered">—</strong><span class="metric-detail">Entregas completadas este mes</span></div>
+      <div class="metric"><span class="metric-label">Tarifas de ${esc(monthLabel)}</span><strong id="billed">—</strong><span class="metric-detail">De tus entregas completadas</span></div>
+      <div class="metric"><span class="metric-label">Repartidores visibles</span><strong id="visibleCouriers">—</strong><span class="metric-detail">Disponibles en tu zona</span></div>
+    </section>
+    <div class="metric-note"><span id="src" class="badge"></span><button class="btn btn--ghost btn--sm" id="refreshStats">Actualizar resumen</button></div>
+    <div class="layout"><div>
+      <section class="card" id="store-orders" tabindex="-1"><div class="card__head"><h2>Tus pedidos</h2><span class="muted">Las entregas de tu comercio</span></div>
+        <div class="chips filters" role="group" aria-label="Filtrar por estado">${['',...Object.keys(STATUS)].map(status=>`<button type="button" class="chip" data-filter="${status}" aria-pressed="${status===''}">${status?STATUS[status]:'Todos'}</button>`).join('')}</div>
+        <div class="live-table-wrap" role="region" aria-label="Tabla de entregas, desplazable horizontalmente" tabindex="0"><table class="live-table"><thead><tr><th>Entrega</th><th>Recogida</th><th>Estado</th><th>Tarifa</th></tr></thead><tbody id="orders"></tbody></table></div>
+        <button class="btn btn--block btn--ghost" id="more" hidden>Cargar más</button>
+      </section>
+      <section class="card" id="store-presence" tabindex="-1"><div class="card__head"><h2>Repartidores en tu zona</h2><button class="btn btn--ghost btn--sm" id="refreshPresence">Actualizar</button></div><div class="list" id="presence"></div></section>
+    </div><aside class="sticky"><section class="card" id="new-delivery" tabindex="-1"><h2>Nuevo pedido</h2><p class="muted" style="margin-top:8px">Indica dónde recogerlo y a dónde llevarlo.</p>
+      <form id="newOrder"><label for="pickup">Recoger en</label><input id="pickup" required maxlength="300" placeholder="Dirección del comercio"><label for="dropoff">Entregar en</label><input id="dropoff" required maxlength="300" placeholder="Dirección de destino"><label for="fee">Tarifa (COP)</label><input id="fee" required type="number" min="100" max="100000000" step="100" value="8000"><div class="highlight"><span>Tarifa de la entrega</span><strong id="feeView">$8.000</strong></div><button class="btn btn--block" type="submit">Publicar pedido</button></form>
+    </section></aside></div>`;
+  app.querySelector('[data-new-delivery]').addEventListener('click',event=>{event.preventDefault();$('#new-delivery').scrollIntoView({block:'start'});$('#pickup').focus({preventScroll:true});});
+  const row = order => `<tr><td><button type="button" class="table-detail" data-order="${esc(order.orderId)}">${short(order.orderId)}<span class="sr-only"> Ver detalle del pedido ${esc(order.orderId)}</span></button><span class="id">${when(order.createdAt)}</span></td><td>${esc(order.pickupAddress || 'Ver detalle')}</td><td>${badge(order.status)}</td><td class="table-fee">${money(order.feeMinor)}</td></tr>`;
 
   async function loadOrders(reset) {
     if (reset) { ui.cursor = null; ui.items = []; }
@@ -226,7 +192,8 @@ async function storeView() {
     const page = await api("GET", "/stores/me/orders?" + q);
     ui.items = reset ? page.items : ui.items.concat(page.items);
     ui.cursor = page.nextCursor;
-    $("#orders").innerHTML = ui.items.length ? ui.items.map(row).join("") : `<div class="empty">Aún no hay pedidos${ui.filter ? " en este estado" : ""}.</div>`;
+    $("#orders").innerHTML = ui.items.length ? ui.items.map(row).join("") : `<tr><td colspan="4"><div class="empty">Aún no hay pedidos${ui.filter ? " en este estado" : ""}.</div></td></tr>`;
+    $("#visibleOrders").textContent = ui.items.length;
     $("#more").hidden = !ui.cursor;
   }
 
@@ -235,16 +202,17 @@ async function storeView() {
     $("#delivered").textContent = s.deliveredCount;
     $("#billed").textContent = money(s.totalFeeMinor);
     $("#src").className = "badge src-" + s.source;
-    $("#src").textContent = s.source === "cache" ? "Desde Redis" : "Desde DynamoDB";
+    $("#src").textContent = s.source === "cache" ? "Resumen guardado" : "Resumen actualizado";
   }
 
   async function loadPresence() {
     try {
       const page = await api("GET", `/zones/${encodeURIComponent(store.zoneId)}/couriers?limit=20`);
+      $("#visibleCouriers").textContent = page.items.length + (page.nextCursor ? '+' : '');
       $("#presence").innerHTML = page.items.length ? page.items.map((p) => `<div class="item" style="cursor:default">
         <span><span class="pulse"></span> <b>${esc(p.courierId)}</b></span><span class="muted">vence en ${p.expiresInSeconds}s</span></div>`).join("")
         : `<div class="empty">No hay repartidores conectados ahora.</div>`;
-    } catch (error) { $("#presence").innerHTML = `<div class="empty">${esc(error.message)}</div>`; }
+    } catch (error) { $("#visibleCouriers").textContent = '—'; $("#presence").innerHTML = `<div class="empty">${esc(error.message)}</div>`; }
   }
 
   app.querySelectorAll("[data-filter]").forEach((b) => b.addEventListener("click", guard(async () => {
@@ -270,12 +238,14 @@ async function storeView() {
     orderDialog(created.orderId, () => loadOrders(true));
   }));
   await Promise.all([loadOrders(true), loadStats(), loadPresence()]);
+  if (owner !== viewVersion) return;
   every(8000, () => { if (!ui.cursor || ui.items.length <= 10) loadOrders(true).catch(() => {}); });
   every(15000, () => loadPresence());
 }
 
 async function orderDialog(orderId, onChange) {
   const dialog = document.createElement("dialog");
+  dialog.className = "live-dialog";
   document.body.appendChild(dialog);
   dialog.addEventListener("close", () => dialog.remove());
   async function paint() {
@@ -292,7 +262,8 @@ async function orderDialog(orderId, onChange) {
         <div class="stat"><span class="muted">Entregar en</span><b style="display:block">${esc(order.dropoffAddress)}</b></div>
       </div>
       <div class="highlight"><span>Tarifa</span><strong>${money(order.feeMinor)}</strong></div>
-      <p class="muted" style="margin-top:12px">Zona ${esc(zoneName(order.zoneId))}${order.courierId ? ` · Repartidor <b>${esc(order.courierId)}</b>` : ""} · versión ${order.version}</p>
+      <p class="muted" style="margin-top:12px">Zona ${esc(zoneName(order.zoneId))}${order.courierId ? ` · Repartidor <b>${esc(order.courierId)}</b>` : ""}</p>
+      ${session.actor.role === "STORE" ? `<a class="btn btn--block btn--ghost" href="#/ubicacion/${encodeURIComponent(orderId)}">Ver ubicación de la entrega</a>` : ""}
       <h3 style="margin:18px 0 10px">Historial</h3>
       <ol class="timeline">${events.items.map((ev) => `<li><b>${esc(EVENT_LABEL[ev.eventType] || ev.eventType)}</b><time>${when(ev.occurredAt)}</time></li>`).join("")}</ol>
       ${link ? `<label for="share">Enlace de seguimiento para el cliente</label>
@@ -300,6 +271,7 @@ async function orderDialog(orderId, onChange) {
       <div class="row" style="margin-top:16px">
         ${canCancel ? `<button class="btn btn--danger" data-cancel>Cancelar pedido</button>` : "<span></span>"}
         <button class="btn" data-close>Cerrar</button></div></div>`;
+    dialog.querySelector('a[href^="#/ubicacion"]')?.addEventListener("click", () => dialog.close());
     dialog.querySelector("[data-close]").addEventListener("click", () => dialog.close());
     dialog.querySelector("[data-copy]")?.addEventListener("click", async () => {
       try { await navigator.clipboard.writeText(link); toast("Enlace copiado"); } catch { $("#share", dialog).select(); }
@@ -317,31 +289,34 @@ async function orderDialog(orderId, onChange) {
 
 // ---------- repartidor ----------
 async function courierView() {
+  const owner = viewVersion;
   await zones();
+  if (owner !== viewVersion) return;
   let courier = await profile("/couriers/me", "courier");
-  if (!courier) return;
+  if (owner !== viewVersion || !courier) return;
   if (!courier.enabled) return waiting("perfil de repartidor", courier.courierId);
+  updateProfile(courier.name, zoneName(courier.zoneId));
   let presence = null;
   app.innerHTML = `
-    <div class="card__head"><div><h1 style="font-size:2rem">${esc(courier.name)}</h1>
-      <p class="muted">Zona ${esc(zoneName(courier.zoneId))} · <span class="mono">${esc(courier.courierId)}</span></p></div></div>
-    <div class="layout">
-      <div>
-        <section class="card"><div class="card__head"><h2>Pedidos disponibles en tu zona</h2><span class="muted" id="openCount"></span></div>
-          <div class="list" id="open"></div>
-          <button class="btn btn--block btn--ghost" id="moreOpen" hidden>Cargar más pedidos</button>
-          <button class="btn btn--block btn--ghost btn--sm" id="refreshOpen">Actualizar pedidos</button>
-          <p class="muted" style="margin-top:10px">Lista con consistencia eventual: al aceptar, DynamoDB confirma de forma atómica que nadie más lo tomó.</p></section>
-        <section class="card"><h2 style="margin-bottom:14px">Tu historial</h2><div class="list" id="history"></div>
-          <button class="btn btn--block btn--ghost" id="moreHistory" hidden>Cargar más historial</button></section>
-      </div>
-      <aside class="sticky">
+    <div class="live-heading"><div><p class="page-context">${esc(courier.name)} · ${esc(zoneName(courier.zoneId))}</p><h1>Vamos con la próxima.</h1><p>Tu jornada, una entrega a la vez.</p></div></div>
+    <div class="layout courier-layout">
+      <aside class="courier-task">
         <section class="card">
           <div class="switch"><span><b>Disponible</b><br><span class="muted" id="presenceText">Desconectado</span></span>
             <input type="checkbox" id="available" aria-label="Disponible" ${courier.available ? "checked" : ""}></div>
         </section>
         <section class="card" id="active"></section>
       </aside>
+
+      <div class="courier-lists">
+        <section class="card" id="courier-open" tabindex="-1"><div class="card__head"><h2>Pedidos disponibles en tu zona</h2><span class="muted" id="openCount"></span></div>
+          <div class="list" id="open"></div>
+          <button class="btn btn--block btn--ghost" id="moreOpen" hidden>Cargar más pedidos</button>
+          <button class="btn btn--block btn--ghost btn--sm" id="refreshOpen">Actualizar pedidos</button>
+          <p class="muted" style="margin-top:10px">Las ofertas cambian mientras otros repartidores aceptan pedidos.</p></section>
+        <section class="card" id="courier-history" tabindex="-1"><h2 style="margin-bottom:14px">Tu historial</h2><div class="list" id="history"></div>
+          <button class="btn btn--block btn--ghost" id="moreHistory" hidden>Cargar más historial</button></section>
+      </div>
     </div>`;
 
   async function beat() {
@@ -361,7 +336,8 @@ async function courierView() {
       <div class="stat"><span class="muted">Recoger en</span><b style="display:block">${esc(order.pickupAddress)}</b></div>
       <div class="stat" style="margin-top:10px"><span class="muted">Entregar en</span><b style="display:block">${esc(order.dropoffAddress)}</b></div>
       <div class="highlight"><span>Ganas</span><strong>${money(order.feeMinor)}</strong></div>
-      <button class="btn btn--block btn--accent" data-step="${next[0]}">${next[1]}</button>`;
+      <button class="btn btn--block btn--accent" data-step="${next[0]}">${next[1]}</button>
+      <a class="btn btn--block btn--ghost" href="#/ubicacion/${encodeURIComponent(order.orderId)}">Compartir ubicación</a>`;
     box.querySelector("[data-step]").addEventListener("click", guard(async () => {
       await api("POST", `/orders/${encodeURIComponent(order.orderId)}/${next[0]}`, { intent: next[0] + ":" + order.orderId });
       toast(next[0] === "pickup" ? "Pedido recogido" : "¡Entregado! Buen trabajo");
@@ -429,19 +405,20 @@ async function courierView() {
   }));
   await loadActive();
   await Promise.all([loadOpen(), loadHistory(), beat()]);
+  if (owner !== viewVersion) return;
   every(20000, beat);
   every(6000, () => { loadActive().then(loadOpen).catch(() => {}); });
 }
 
 // ---------- administración ----------
 function adminView() {
-  app.innerHTML = `<h1 style="font-size:2rem;margin-bottom:16px">Administración</h1>
+  app.innerHTML = `<div class="live-heading"><div><h1>Administración</h1><p>Perfiles, entregas e incidencias de tu operación.</p></div></div>
     <div class="grid grid--2">
-      ${["store", "courier"].map((k) => `<section class="card"><h2>${k === "store" ? "Comercios" : "Repartidores"}</h2>
+      ${["store", "courier"].map((k) => `<section class="card" id="admin-${k==='store'?'stores':'couriers'}" tabindex="-1"><h2>${k === "store" ? "Comercios" : "Repartidores"}</h2>
         <form data-enable="${k}"><label for="${k}Id">Identificador</label><input id="${k}Id" required pattern="[A-Za-z0-9_\\-]+">
           <div class="row"><button class="btn btn--block" value="true">Habilitar</button><button class="btn btn--block btn--danger" value="false">Deshabilitar</button></div>
           <p class="muted" data-out style="margin-top:10px"></p></form></section>`).join("")}
-      <section class="card"><h2>Consultar pedido</h2>
+      <section class="card" id="admin-orders" tabindex="-1"><h2>Consultar pedido</h2>
         <form id="lookup"><label for="orderId">ID del pedido</label><input id="orderId" required>
           <div class="row"><button class="btn btn--block btn--ghost" value="view">Ver detalle</button><button class="btn btn--block btn--danger" value="fail">Marcar fallido</button></div></form>
         <p class="muted" style="margin-top:10px">Marcar fallido es un procedimiento excepcional: solo desde «Recogido».</p></section>
@@ -478,20 +455,25 @@ function adminView() {
 
 // ---------- seguimiento público ----------
 async function trackingView(token) {
-  if (!token) { home(); $("#token")?.focus(); return; }
-  app.innerHTML = `<section class="card" style="max-width:640px;margin:0 auto" id="tracking"><p class="muted">Consultando…</p></section>`;
+  if (!token) {
+    app.innerHTML = `<section class="card public-tracking"><h1>Sigue tu entrega.</h1><p class="muted" style="margin-top:12px">Pega el enlace o código que te compartió el comercio.</p><form id="trackForm"><label for="token">Código de seguimiento</label><input id="token" required placeholder="Tu enlace o código"><button class="btn btn--block">Ver estado</button></form></section>`;
+    $('#trackForm').addEventListener('submit',event=>{event.preventDefault();const raw=$('#token').value.trim();location.hash='#/seguimiento/'+encodeURIComponent(raw.split('/seguimiento/').pop());});
+    return;
+  }
+  app.innerHTML = `<section class="card public-tracking" id="tracking"><p class="muted">Consultando…</p></section>`;
   async function paint() {
     const box = $("#tracking");
     try {
       const t = await api("GET", "/tracking/" + encodeURIComponent(token) + "?limit=50");
       const reached = new Set(t.events.map((e) => e.eventType));
       const flow = [["CREATED", "Creado"], ["ASSIGNED", "Asignado"], ["PICKED_UP", "Recogido"], ["DELIVERED", "Entregado"]];
-      box.innerHTML = `<div class="card__head"><h2>Tu pedido</h2>${badge(t.status)}</div>
+      box.innerHTML = `<div class="card__head"><h1>Tu pedido</h1>${badge(t.status)}</div>
         <p class="muted">Actualizado ${when(t.updatedAt)}</p>
         ${["CANCELLED", "FAILED"].includes(t.status) ? `<div class="notice" style="margin-top:14px">${t.status === "CANCELLED" ? "El comercio canceló este pedido." : "La entrega no pudo completarse."}</div>`
           : `<div class="steps">${flow.map(([k, l]) => `<div class="step ${reached.has(k) ? "done" : ""}">${l}</div>`).join("")}</div>`}
         <ol class="timeline">${t.events.map((e) => `<li><b>${esc(EVENT_LABEL[e.eventType] || e.eventType)}</b><time>${when(e.occurredAt)}</time></li>`).join("")}</ol>
-        <p class="muted" style="margin-top:14px">Solo mostramos el estado y los hitos: ni direcciones ni datos personales.</p>`;
+        <p class="muted" style="margin-top:14px">Consulta el avance de tu entrega y la ubicación que comparta el repartidor.</p>
+        <a class="btn btn--block btn--ghost" href="#/mapa/${encodeURIComponent(token)}">Ver ubicación compartida</a>`;
     } catch (error) {
       box.innerHTML = `<h2>No encontramos ese pedido</h2><p class="muted" style="margin-top:8px">Revisa el enlace que te compartieron.</p>
         <a class="btn btn--block btn--ghost" href="#/seguimiento">Probar con otro código</a>`;
@@ -504,11 +486,19 @@ async function trackingView(token) {
 
 // ---------- enrutado ----------
 async function render() {
+  const owner = ++viewVersion;
   timers.forEach(clearInterval);
   timers = [];
+  disposeGeo?.(); disposeGeo = null;
+  window.scrollTo({top:0,behavior:'instant'});
   nav();
   const [, route, arg] = location.hash.split("/");
   try {
+    if (route === 'mapa' || (route === 'ubicacion' && session)) {
+      app.innerHTML = '<div id="live-geo"></div>';
+      disposeGeo = mountGeo(document.getElementById('live-geo'), arg ? decodeURIComponent(arg) : '', route === 'mapa', session);
+      return;
+    }
     if (route === "seguimiento") return await trackingView(arg ? decodeURIComponent(arg) : "");
     if (!session) return home();
     const target = { STORE: "comercio", COURIER: "repartidor", ADMIN: "admin" }[session.actor.role];
@@ -517,7 +507,8 @@ async function render() {
     if (target === "repartidor") return await courierView();
     return adminView();
   } catch (error) {
-    app.innerHTML = `<section class="card" style="max-width:560px;margin:0 auto"><h2>Algo salió mal</h2>
+    if (owner !== viewVersion) return;
+    app.innerHTML = `<section class="card" style="max-width:560px;margin:0 auto"><h1>No pudimos cargar esta vista</h1>
       <p class="muted" style="margin-top:8px">${esc(error.message)}</p><button class="btn btn--block" data-act="reload">Reintentar</button></section>`;
   }
 }
@@ -527,5 +518,6 @@ document.addEventListener("click", (e) => {
   if (act === "logout") logout(false);
   if (act === "reload") render();
 });
+document.addEventListener("flashdelivery:logout", () => logout(false));
 window.addEventListener("hashchange", render);
 render();

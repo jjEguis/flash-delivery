@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="es-CO">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta name="description" content="Seguimiento geográfico de entregas activas." />
+    <title>FlashDelivery · Seguimiento</title>
+    <script>
+      (() => {
+        let preference = 'system';
+        try { preference = localStorage.getItem('flashdelivery:theme:v1') || 'system'; } catch {}
+        if (!['system', 'light', 'dark'].includes(preference)) preference = 'system';
+        const dark = preference === 'dark' || (preference === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      })();
+    </script>
+    <link rel="stylesheet" href="/src/styles/index.css" />
+  </head>
+  <body>
+    <div id="design-root"></div>
+    <script type="module" src="/src/geo-main.tsx"></script>
+  </body>
+</html>

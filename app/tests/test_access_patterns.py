@@ -118,9 +118,9 @@ def test_AP11_tracking_get_query_and_privacy(dataset):
     assert result["status"] == "ASSIGNED"
     assert set(result) == {"orderId", "status", "updatedAt", "events", "nextCursor"}
     assert set(result["events"][0]) == {"eventType", "occurredAt"}
-    assert [name for name, _ in recorder.calls] == ["get_item", "query"]
+    assert [name for name, _ in recorder.calls] == ["get_item", "get_item", "query"]
     assert recorder.calls[0][1]["Key"] == serialize(keys.meta("SEED_demo_o3"))
-    assert recorder.calls[1][1]["ExpressionAttributeValues"][":pk"] == {"S": "ORDER#SEED_demo_o3"}
+    assert recorder.calls[2][1]["ExpressionAttributeValues"][":pk"] == {"S": "ORDER#SEED_demo_o3"}
     final = repo.get_tracking(token, limit=1, cursor=result["nextCursor"])
     assert final["events"][0]["eventType"] == "ASSIGNED"
     recorder.calls.clear()

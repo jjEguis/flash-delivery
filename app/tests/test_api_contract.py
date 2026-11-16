@@ -13,7 +13,7 @@ from lambdas.shared.exceptions import UnauthorizedError
 from lambdas.shared.http import router
 
 OPENAPI = ROOT.parent / "docs" / "api" / "openapi.json"
-PUBLIC = {"POST /api/v1/auth/dev-login", "GET /api/v1/zones", "GET /api/v1/tracking/{token}"}
+PUBLIC = {"POST /api/v1/auth/dev-login", "GET /api/v1/zones", "GET /api/v1/tracking/{token}", "GET /api/v1/tracking/{token}/location"}
 
 
 @pytest.fixture(scope="module")
@@ -44,7 +44,7 @@ def test_openapi_operations_are_complete(spec):
         assert operation["responses"], route
         assert all(code.isdigit() for code in operation["responses"]), route
         assert (operation.get("security") == []) is (route in PUBLIC), route
-        if route.startswith("POST /api/v1/orders"):
+        if route.startswith("POST /api/v1/orders") and not route.endswith("/location"):
             names = [p.get("$ref", "") for p in operation.get("parameters", [])]
             assert "#/components/parameters/IdempotencyKey" in names, route
 

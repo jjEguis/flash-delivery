@@ -5,4 +5,5 @@ constructs==10.4.2
 pytest==9.0.2
 pytest-mock==3.17.0
 moto[dynamodb]==5.2.5
-fakeredis==2.40.0
+fakeredis[lua]==2.40.0
+lupa==2.8
