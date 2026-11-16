@@ -14,3 +14,4 @@ FlashDelivery_*.zip
 **/node_modules
 **/test-results
 **/playwright-report
+**/design-dist

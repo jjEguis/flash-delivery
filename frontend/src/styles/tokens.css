@@ -1,0 +1,12 @@
+:root {
+  font-family: 'Manrope', system-ui, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  --radius-card: 20px;
+  --radius-control: 12px;
+  --space-unit: 4px;
+  --motion: 180ms;
+  --sidebar-width: 248px;
+  --content-width: 1440px;
+}

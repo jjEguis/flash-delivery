@@ -209,3 +209,7 @@ Cada SPEC debe aprobarse con pruebas y criterios de aceptación antes de iniciar
 - Definir timeout de heartbeat, expiración de idempotencia y política de `FAILED`.
 - Definir identidad local y políticas de seguridad sin credenciales de producción.
 - Eventual despliegue AWS real: fase separada, no presupuestada ni implementada ahora.
+
+## Prototipo de diseño frontend v2.1
+
+FE-00/FE-01 añaden una entrada React/TypeScript/Vite independiente en `frontend/preview.html`, con providers de tema y datos simulados, componentes compartidos y vistas por actor. Se ejecuta en :5173 y compila a `frontend/design-dist/`; la SPA funcional y el proxy :8080 siguen siendo la ruta integrada con API Gateway. El prototipo no realiza solicitudes a la API. [Decisiones y brechas](frontend/FE-00-DISENO.md), [estado de revisión](frontend/FE-01-REVISION.md). FE-02 y siguientes pendientes de aprobación visual.

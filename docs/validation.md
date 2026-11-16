@@ -1,5 +1,23 @@
 # Registro de validación
 
+## Ajuste de selectores FE-01 — 2026-11-15
+
+Se asignan explícitamente fondo y texto de las opciones nativas a los tokens del tema, evitando texto claro sobre el fondo blanco del popup del sistema. Aplica a Apariencia, Vista y Estado. Se añaden dos pruebas de contraste calculado de todas las opciones y selección con teclado, en claro y oscuro. Resultado: **29 pruebas de navegador aprobadas**; compilación y lint correctos. La presentación final del popup nativo puede variar según navegador y sistema operativo.
+
+## Diseño frontend v2.1 — FE-00/FE-01 — 2026-11-15
+
+Prototipo independiente con datos simulados; pendiente revisión visual del usuario. [Decisiones](frontend/FE-00-DISENO.md) y [capturas/flujo](frontend/FE-01-REVISION.md).
+
+| Comprobación | Resultado |
+| --- | --- |
+| `npm run build` y `npm run lint` | Correctos: TypeScript, compilación Vite y ESLint |
+| `npm run test:design` | **7 passed**: tema, sistema, almacenamiento y primitivas |
+| `npm run test:design:e2e` | **27 passed**, Chromium: matriz de 20 vistas/tamaños/temas, axe, sin overflow, teclado, formularios, estados y tema inicial |
+| `npm test` | **22 passed**, regresión HTTP y paginación existente |
+| `npm run test:e2e` | **10 passed**, regresión del frontend funcional en escritorio/móvil |
+
+Se inspeccionaron capturas de comercio y repartidor; se corrigieron contraste del texto secundario claro y desborde móvil, y se mantuvo la acción del repartidor por encima de la navegación inferior. Se guardan cuatro PNG en `docs/evidencias/frontend-fe01/`. Los tests del prototipo rechazan llamadas externas/API. Las comprobaciones de accesibilidad son automáticas y de teclado; no se ejecutó revisión humana con lector de pantalla. No se repitieron backend, smoke real ni rendimiento porque esta entrega no modifica esos componentes. CI incorpora compilación, lint y ambas suites nuevas. FE-02 e integración real pendientes.
+
 ## SPEC-07 — fiabilidad del frontend — 2026-11-15
 
 | Comprobación ejecutada | Resultado |

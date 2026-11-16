@@ -5,9 +5,41 @@
   "scripts": {
     "test": "node --test tests/unit/*.test.js",
     "test:e2e": "playwright test",
-    "test:smoke": "playwright test --config playwright.smoke.config.js"
+    "test:smoke": "playwright test --config playwright.smoke.config.js",
+    "dev:preview": "vite --host 127.0.0.1 --port 5173 --strictPort",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 5173 --strictPort",
+    "lint": "eslint src vite.config.ts",
+    "test:design": "vitest run",
+    "test:design:e2e": "playwright test --config playwright.design.config.js"
   },
   "devDependencies": {
-    "@playwright/test": "1.65.1"
+    "@playwright/test": "1.65.1",
+    "vite": "8.3.8",
+    "@vitejs/plugin-react": "5.2.0",
+    "typescript": "6.0.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@types/node": "26.6.6",
+    "vitest": "5.1.0",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.10",
+    "@testing-library/jest-dom": "7.0.1",
+    "jsdom": "31.0.1",
+    "eslint": "10.15.0",
+    "typescript-eslint": "8.72.2",
+    "@eslint/js": "10.0.1",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "@axe-core/playwright": "4.14.0"
+  },
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-router-dom": "7.18.5",
+    "lucide-react": "1.73.0",
+    "@fontsource/manrope": "5.3.0"
+  },
+  "overrides": {
+    "minimatch": "11.0.8"
   }
 }

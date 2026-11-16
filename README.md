@@ -115,3 +115,7 @@ docker compose exec -T cdk-dev python -m scripts.demo --clean                   
 Compose usa volúmenes para MiniStack y Redis (AOF). `docker compose down` conserva los datos; `docker compose down --volumes` los borra y exige reprovisionar. Ningún contenedor se conecta a AWS real ni monta el socket Docker. MiniStack no reproduce el rendimiento ni la consistencia eventual exactos de DynamoDB; ver el informe de calidad.
 
 Documentación: [arquitectura](docs/ARQUITECTURA_GENERAL.md), [entorno y tests](docs/ENTORNO_LOCAL.md), [especificaciones](docs/specs/README.md), [plan](docs/PLAN_DE_TRABAJO.md) y [evidencias](docs/validation.md).
+
+## Prototipo del nuevo diseño
+
+FE-00/FE-01 de diseño v2.1 están disponibles para revisión visual con datos simulados. Desde `frontend/`: `npm ci` y `npm run dev:preview` (Node 22.12+). Abrir http://127.0.0.1:5173/preview.html. Incluye comercio, repartidor, seguimiento, claro/oscuro y estados de ejemplo. [Guía y capturas](docs/frontend/FE-01-REVISION.md). La integración de este diseño con la API está pendiente.
