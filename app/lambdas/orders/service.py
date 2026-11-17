@@ -12,6 +12,7 @@ from lambdas.shared.storage.model import make_item
 from lambdas.shared.storage.repository import page_dto
 from lambdas.shared.storage.transactions import run_command
 from lambdas.stores.repository import StoresRepository
+from lambdas.tracking.coordinates import coordinate, degrees
 from lambdas.tracking.tokens import issue_token
 from lambdas.tracking.access import TrackingAccess, new_access
 
@@ -47,6 +48,10 @@ def order_view(order, *, detail):
             view[name] = order[name]
     if detail and "dropoffAddress" in order:
         view["dropoffAddress"] = order["dropoffAddress"]
+    if detail:
+        for name in ("pickup", "dropoff"):
+            if name+"Coordinates" in order:
+                view[name+"Location"] = degrees(order[name+"Coordinates"])
     return view
 
 
@@ -73,11 +78,15 @@ def get_order(adapter, actor: ActorContext, order_id):
     return order_view(order, detail=True)
 
 
-def create_order(adapter, actor: ActorContext, *, request_id, pickup_address, dropoff_address, fee_minor):
+def create_order(adapter, actor: ActorContext, *, request_id, pickup_address, dropoff_address, fee_minor, pickup_location=None, dropoff_location=None):
     """T1: comercio habilitado + META PENDING + evento CREATED + vista de estado + idempotencia."""
     authorize(actor, "STORE")
     payload = {"pickupAddress": _text(pickup_address, "pickupAddress"),
                "dropoffAddress": _text(dropoff_address, "dropoffAddress"), "feeMinor": _fee(fee_minor)}
+    if (pickup_location is None) != (dropoff_location is None):
+        raise ValidationError("Selecciona recogida y destino juntos")
+    if pickup_location is not None:
+        payload.update(pickupCoordinates=coordinate(pickup_location), dropoffCoordinates=coordinate(dropoff_location))
     orders, stores = OrdersRepository(adapter), StoresRepository(adapter)
     now = clock.now()
 
@@ -94,6 +103,9 @@ def create_order(adapter, actor: ActorContext, *, request_id, pickup_address, dr
                            created_at=now, pickup_address=payload["pickupAddress"],
                            dropoff_address=payload["dropoffAddress"], fee_minor=payload["feeMinor"],
                            currency=CURRENCY, tracking_token_hash=token_hash)
+        if "pickupCoordinates" in payload:
+            order = make_item("ORDER", **fields(order), pickupCoordinates=payload["pickupCoordinates"],
+                              dropoffCoordinates=payload["dropoffCoordinates"])
         changed = ForbiddenError("Tu comercio cambió o fue deshabilitado", "STORE_NOT_ENABLED")
         return [(stores.build_enabled_condition(store["storeId"], store["version"]), changed),
                 (orders.build_put(order), None),

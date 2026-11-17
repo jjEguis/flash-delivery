@@ -1,94 +1,85 @@
-# SPEC-08 — Ubicación durante entregas activas
+# Seguimiento vial durante entregas — SPEC-08 v2
 
-GEO-00 a GEO-05 implementadas. [Verificación previa](GEO-00.md), [SPEC](../specs/SPEC-08_GPS_TRACKING.md), [contrato](../api/openapi.json) y [validación](../validation.md).
+Implementación de [SPEC-08 v2](../specs/SPEC-08_LIVE_DELIVERY_TRACKING_v2.md), que sustituye el alcance geográfico anterior. Las entregas funcionan sin GPS; la posición se comparte únicamente en ASSIGNED/PICKED_UP. [Validación](../validation.md), [diseño](DISENO-V2.md), [compatibilidad](GEO-00-V2.md).
 
-## Cómo probarlo
+## Arranque local
 
-Con Docker y Node 22.12+:
+Desde la raíz, con Docker, Node 22.12+ y la configuración de `.env.example`:
 
 ```bash
+# Primera preparación: descarga Colombia (~318 MB), recorta Santa Marta y prepara MLD.
+docker compose --profile geo-prepare run --rm osm-download
+docker compose --profile geo-prepare run --rm osrm-prepare
+# Los siguientes arranques reutilizan los archivos procesados.
 docker compose up -d --build --wait
 docker compose exec -T cdk-dev python -m scripts.provision
-cd frontend
-npm ci
-npm run build:local
+docker compose exec -T cdk-dev python -m scripts.demo
+npm --prefix frontend ci
+npm --prefix frontend run build:local
 ```
 
-Abrir http://127.0.0.1:8080. La aplicación funcional completa se compila con Vite y utiliza el diseño aprobado. Los mapas se abren dentro de la misma navegación en `#/ubicacion/<id>` y `#/mapa/<token>`. Los enlaces antiguos a `/design-dist/geo.html` redirigen a esas rutas. El prototipo FE-01 permanece como referencia explícita en `preview.html`; :8080 usa exclusivamente los servicios reales.
+Abrir http://127.0.0.1:8080. `npm run dev:preview` desde `frontend/` sirve la aplicación en :5173 con proxy `/api/` hacia :8080. La sesión pertenece a cada origen; usar el mismo origen para todas las vistas de una sesión.
 
-1. Comercio `tienda_demo`: crear un pedido nuevo y guardar el enlace de seguimiento. Si no existen los perfiles de demostración, ejecutar `docker compose exec -T cdk-dev python -m scripts.demo` antes de probar.
-2. En otro navegador o perfil, repartidor `rep_demo1`: activar disponibilidad y aceptar ese pedido. En «Pedido activo», abrir «Compartir ubicación».
-3. En el panel de seguimiento, seleccionar simulación, marcar el consentimiento e iniciar. Se envían ocho puntos de prueba cada cuatro segundos a la API real. Pausar, reanudar y reiniciar conservan el contrato; detener borra la posición. Finalizar el recorrido no marca el pedido como entregado.
-4. En Comercio, abrir el detalle y «Ver ubicación de la entrega». El destinatario abre el enlace compartido y «Ver ubicación compartida». Ambas vistas consultan la posición cada cinco segundos y señalan «Modo simulación · Recorrido ficticio».
-5. Marcar recogido y entregado en la aplicación del repartidor. Los mapas dejan de mostrar coordenadas y el servidor rechaza nuevas muestras. También se limpia al cancelar o marcar fallido.
-6. Para GPS, elegir «GPS del navegador», marcar el consentimiento y activar. El navegador solicita permiso; denegarlo permite continuar por estados. Requiere HTTPS o localhost. Detener, cerrar la página o cambiar la sesión detiene el watcher; cerrar sesión en otra pestaña elimina la muestra mediante una petición de limpieza best effort.
+OSRM 5.27.1 funciona solo en la red Docker `local`; no publica puertos al host. El runtime Lambda local consulta `http://osrm:5000`, nunca localhost ni el servidor público de demo. La preparación usa el perfil `car.lua`, extract → partition → customize; `processed.ok` solo se crea al terminar. El healthcheck realiza una consulta de ruta válida, con timeout Docker configurable. Los archivos permanecen en `osrm-data` y no se regeneran al arrancar. Para cambiar fuente, cobertura o versión del motor, preparar un volumen nuevo explícitamente; no borrar los volúmenes de MiniStack/Redis.
 
-La vista geográfica recibe la sesión activa de la aplicación y comparte su selector de tema. Navegar al mapa y volver mantiene la sesión, incluso cuando el almacenamiento está bloqueado. Al navegar fuera del mapa se desmonta el watcher y se detienen sus temporizadores. Para probar el flujo real usar :8080; la sesión no se comparte entre orígenes. El cierre forzado del navegador puede impedir la petición de limpieza; el TTL y el estado oficial limitan el acceso.
+## Procedencia OSM
 
-## Arquitectura y datos
+Fuente: [Colombia de Geofabrik](https://download.geofabrik.de/south-america/colombia.html), OpenStreetMap, licencia [ODbL 1.0](https://www.openstreetmap.org/copyright). Extracción con vías completas en bbox oeste/sur/este/norte `-74.28,11.12,-74.05,11.36`. No se infieren posiciones a partir de direcciones.
 
-```text
-GPS con consentimiento / recorrido ficticio
-         │ HTTP autenticado
-         ▼
-Tracking Lambda → OrderReader → ORDER#id / META (lectura fuerte)
-         │ permisos, estado activo, validación
-         ▼
-LocationStore → Redis (Lua: orden temporal + límites + SET con TTL)
-         ▲
-comercio propietario / repartidor asignado / destinatario con token
-```
+Preparación observada: descarga **2026-11-17**, datos hasta **2026-11-16T21:22:36Z**. SHA-256 del PBF original: `5aacc48a344f70ea5b208ead065e79bfbee46698c5129a0ed3f153a5a533c6e3`. `/data/source.json` conserva URL, fecha, licencia, bbox, hash y metadata de Osmium. `OSM_PBF_URL` admite un PBF archivado para repetir exactamente una versión; la URL `latest` cambia con el tiempo. Los PBF y derivados no entran en Git.
 
-No se escriben coordenadas en DynamoDB ni se crea tabla o GSI. El nuevo ítem `ORDER#id / TRACKING`, sin índices, guarda nonce aleatorio de 256 bits, vencimiento y revocación. Se crea en la transacción inicial junto al pedido. HMAC con clave del servidor y nonce permite recuperar el mismo token en reintentos; META conserva solo el hash verificable. El nonce no es el secreto público ni permite deducirlo sin la clave. Este ítem no expira físicamente, para evitar que desaparezca una revocación y se interprete el token como histórico. No es un histórico de ubicaciones.
+## Demostración en sesiones independientes
 
-Los tokens nuevos vencen a las 24 horas y el comercio puede revocarlos desde el mapa. El endpoint de revocación es idempotente. No se incluye renovación en esta fase. Los enlaces anteriores a SPEC-08 siguen mostrando estados pero no autorizan ubicación; crear un pedido nuevo para probar el mapa público. El secreto local por defecto sigue siendo de desarrollo, igual que la autenticación existente.
+1. Comercio `tienda_demo`: crear un pedido, escribir direcciones y abrir «Seleccionar puntos en el mapa». Elegir recogida y entrega o pulsar «Usar puntos de demo de Santa Marta». Publicar y conservar el enlace público.
+2. En otro perfil de navegador, repartidor `rep_demo1`: activar disponibilidad, aceptar el pedido y abrir «Compartir ubicación».
+3. Elegir «Simulación de desarrollo», seleccionar un inicio en el mapa o «Usar inicio de demo en Santa Marta», marcar el consentimiento e iniciar. El primer punto se envía por API y el backend calcula la ruta vial a recogida.
+4. Ajustar velocidad (1–25 m/s), pausar, reanudar o reiniciar. El avance usa distancia acumulada y reloj monotónico; las muestras usan UTC y secuencia. No se superponen envíos. «Simular desvío» desplaza tres muestras aproximadamente 110 m al norte; el recálculo espera el cooldown de 30 s y puede fallar si no hay vía cercana. Eso conserva la ruta anterior desactualizada y oculta la ETA.
+5. Comercio abre el mapa desde el detalle; destinatario entra desde el enlace público. Ambos ven muestras por API, ruta recorrida/pendiente, estado, última actualización y ETA aproximada. Todos los mapas etiquetan SIMULATED.
+6. «Marcar recogido» cambia a ruta hacia destino. El final de la simulación no entrega el pedido. «Marcar entregado» usa el comando autorizado existente y termina el seguimiento. También se oculta al cancelar/fallar, aunque falle la limpieza Redis.
+7. Para GPS, elegir «GPS del navegador», consentir y activar. Denegar permiso permite continuar por estados. Detener, salir del mapa o cerrar sesión libera watcher y temporizadores. GPS exige HTTPS o localhost; no se promete continuidad con la pestaña cerrada.
 
-## Contrato y configuración
+El simulador se habilita con `build:local`/Vite DEV y, además, `ENVIRONMENT=local` + `TRACKING_SIMULATION_ENABLED=true` en backend. CDK utiliza false por defecto; Compose lo activa explícitamente para la demo local. `npm run build` omite los controles de demo. Reiniciar una pestaña no reanuda automáticamente ni salta al destino.
 
-Todas las rutas tienen prefijo `/api/v1`.
+## Contratos y migración
 
-| Ruta | Permiso y resultado |
+Se mantienen todos los endpoints `/api/v1` y sus permisos/idempotencia. Se añaden:
+
+| Contrato | Comportamiento |
 | --- | --- |
-| `POST /orders/{orderId}/location` | Solo asignado en ASSIGNED/PICKED_UP; 202 con `accepted`; false si la muestra es anterior o duplicada |
-| `GET /orders/{orderId}/location` | Comercio propietario o repartidor asignado; otros comercios 404, roles ajenos 403 |
-| `DELETE /orders/{orderId}/location` | Asignado; 204; sustituye coordenadas por tombstone temporal que rechaza muestras atrasadas |
-| `GET /tracking/{token}/location` | Token nuevo válido, vigente y no revocado; respuesta mínima sin IDs de participantes ni direcciones |
-| `DELETE /orders/{orderId}/tracking-token` | Comercio propietario; 204; revoca el enlace de estados y ubicación |
+| `POST /orders` | `pickupLocation` y `dropoffLocation` opcionales, ambos juntos, con latitude/longitude finitas y dentro de cobertura. Pedidos antiguos y creación sin puntos siguen funcionando por estados/GPS sin ruta. |
+| `POST /orders/{orderId}/location` | Contrato anterior más sequence entero seguro no negativo, speedMps 0–100 y headingDegrees [0,360), opcionales. SIMULATED requiere configuración de desarrollo en backend. |
+| `GET /orders/{orderId}/route` | Comercio propietario o repartidor asignado; geometría GeoJSON lon/lat, fase, versión, cálculo, progreso, distancia pendiente y ETA nullable. |
+| `GET /tracking/{token}/route` | Token vigente/revocable, proyección sin identidad, direcciones, instrucciones ni anotaciones internas de segmentos. |
 
-Posiciones finitas, latitud ±90, longitud ±180, precisión opcional no negativa, fuente SIMULATED/BROWSER_GPS, fecha UTC con sufijo Z. Edad máxima 120 s y futuro máximo 15 s; errores semánticos 422. El JSON HTTP mal formado conserva el error 400 existente. Redis limita por pedido y repartidor; el router mantiene además su límite general. Ningún campo del cuerpo define la identidad.
+No hay nuevas tablas ni índices. ORDER/META guarda **solo los dos puntos estáticos del pedido**, como enteros E6 para conservar el esquema JSON/DynamoDB sin floats. Se proyectan a grados en el DTO de detalle y no en listados de ofertas. Esto amplía la decisión anterior «sin coordenadas en DynamoDB»: las muestras de movimiento siguen exclusivamente en Redis, sin histórico. Ambos puntos forman parte de la huella de idempotencia de creación. Los pedidos existentes no requieren backfill.
 
-| Variable Lambda | Valor inicial |
-| --- | --- |
-| `LOCATION_TTL_SECONDS` | 120 |
-| `LOCATION_FRESH_SECONDS` | 30 |
-| `LOCATION_MIN_INTERVAL_MS` | 3000 |
-| `TRACKING_TOKEN_TTL_SECONDS` | 86400 |
+`tracking:order:{id}:latest` conserva posición por 120 s. La comparación Lua de timestamp/secuencia precede al límite por repartidor/pedido; duplicados y muestras antiguas no renuevan TTL. FRESH dura 15 s, después STALE; tras 120 s desde la muestra resulta UNAVAILABLE aunque aún quede TTL de recepción. Se conserva la credencial aleatoria, vencimiento y revocación de v1.
 
-El registro CDK propaga estas variables al provisionar. `tracking:order:{id}:latest` guarda la última muestra y el ID interno del repartidor; la respuesta filtra ese ID. Muestras antiguas no renuevan TTL. Las claves de límite duran el intervalo configurado. FRESH dura 30 s; STALE indica última ubicación conocida; al vencer desaparece y resulta UNAVAILABLE.
+Snapshots en `tracking:order:{id}:route:{fase}`, TTL 300 s, con progreso y duraciones/distancias de segmentos OSRM. Se invalidan por fase, edad o desvío. Una muestra solo avanza el progreso una vez, mediante comparación atómica de época y versión. Tres muestras válidas a más de 50 m activan recálculo (umbral ajustado por precisión, hasta 200 m); cooldown 30 s. El lock con expiración y nonce verifica propiedad, versión y última muestra antes de publicar; un propietario vencido no sobrescribe al sucesor. Un contador entero por pedido, sin coordenadas, mide llamadas y vence con el TTL de ruta.
 
-Dispatch limpia la posición después de confirmar DELIVERED/CANCELLED/FAILED. Si Redis falla, no revierte la transacción: las lecturas verifican el estado fuerte de META, no devuelven coordenadas terminales y el TTL actúa como respaldo. Publicar revalida el estado después de escribir. Redis y DynamoDB no forman una transacción distribuida: una lectura concurrente puede representar el estado válido en el instante de comprobación; no se promete revocación retroactiva de respuestas ya enviadas.
+Cada lectura/escritura valida el estado oficial con lectura fuerte. Tras OSRM se revalida fase/asignación, y antes de devolver ruta se revalida estado y token. Una carrera con cierre puede dejar un snapshot residual, pero las lecturas terminales lo ocultan. Redis/OSRM no modifican estados automáticamente ni forman una transacción distribuida con DynamoDB.
 
-## Mapas, compilación y límites
+## Interfaz y configuración
 
-Leaflet 1.9.4 se empaqueta localmente. Los tiles proceden de OpenStreetMap, con atribución visible, HTTPS, caché normal del navegador y Referer de origen; los tokens permanecen en el fragmento de navegación y se omiten de los logs del proxy. El fondo cartográfico es un servicio externo, sin SLA; si falla, permanecen marcador, coordenadas textuales y estado. No hay prefetch, descargas masivas, ETA ni ruta por calles. El estilo oscuro adapta la interfaz y controles, conserva los tiles originales y no altera la atribución. Se puede sustituir el proveedor con `VITE_MAP_TILE_URL`; al cambiarlo también debe adaptarse su atribución y política.
+MapLibre GL JS **6.19.0**, worker empaquetado localmente con Vite. Se retiró Leaflet. Claro/oscuro, Manrope y tokens existentes; marcador con heading, pins R/E, centrado automático desactivable, zoom y ruta completa. La animación interpola sobre geometría durante un segundo, termina en la muestra y respeta `prefers-reduced-motion`; no extrapola ni representa una medición GPS adicional. Polling cada 5 s en vista visible, sin solapamiento, backoff de errores y parada en estados terminales. Coordenadas/frescura textuales y timeline permanecen disponibles cuando falla el mapa.
 
-`npm run build` excluye los controles de simulación. `npm run build:local` los habilita explícitamente y deja la compilación local disponible en :8080. El servidor `npm run dev:preview` también los habilita en desarrollo; `/geo.html` usa proxy hacia :8080. El intervalo del simulador admite `VITE_GEO_INTERVAL_MS` (mínimo 3000; inicial 4000). Sus puntos son ficticios y no describen calles reales.
+OSRM no proporciona tiles, geocodificación ni tráfico. Tiles OSM separados, atribuidos y sujetos a su [política de uso](https://operations.osmfoundation.org/policies/tiles/); no hay descargas masivas. Configurar `VITE_MAP_STYLE_URL` para un estilo completo o `VITE_MAP_TILE_URL` + `VITE_MAP_ATTRIBUTION` para raster. El estilo local ajusta brillo y ruta para tema oscuro. Los tokens van en el fragmento, nunca en solicitudes al proveedor cartográfico.
 
-No se garantiza seguimiento en segundo plano ni continuidad con la pestaña cerrada. El GPS físico no se validó con un teléfono: se comprobó el contrato con callbacks controlados en Chromium y el recorrido completo con la API real. La accesibilidad se verificó con axe y controles de teclado; falta revisión humana con lector de pantalla.
+Configuración completa en `.env.example` y `frontend/.env.example`: `OSRM_URL`, `OSRM_TIMEOUT_SECONDS=3`, `ROUTING_BBOX`, `ROUTE_TTL_SECONDS=300`, `ROUTE_DEVIATION_METERS=50`, `ROUTE_RECALCULATE_SECONDS=30`, `LOCATION_TTL_SECONDS=120`, `LOCATION_FRESH_SECONDS=15`, `LOCATION_MIN_INTERVAL_MS=3000`. `VITE_GEO_INTERVAL_MS` admite 3000–5000 ms (4000 inicial). Los env de backend se propagan desde Compose por CDK al provisionar. OSRM usa WARNING para evitar access logs con coordenadas; los logs de negocio registran plantillas de ruta y medidas sin tokens/coordenadas.
 
-## Pruebas reproducibles
+## Validación reproducible
 
 ```bash
 docker compose exec -T cdk-dev python -m pytest tests/ -q
-docker compose exec -T cdk-dev python -m pytest tests/integration/test_geo_http_integration.py tests/integration/test_api_flow.py -m integration -q
+docker compose exec -T cdk-dev python -m pytest tests/integration/ -m integration -q
 cd frontend
 npm run build
 npm run lint
-npm run test:design
 npm test
+npm run test:design
 npx playwright install chromium
-npm run test:design:e2e
 npm run test:e2e
+npm run test:design:e2e
 npm run test:geo:e2e
 npm run test:geo:production
 npm run test:unified:e2e
@@ -96,8 +87,12 @@ npm run build:local
 npm run test:geo:real
 ```
 
-El último smoke requiere la API real, :8080, y Python local con boto3/python-dotenv (por defecto `../.venv/bin/python`, configurable con `GEO_PYTHON`). Crea actores/pedido aislados y limpia por claves exactas, incluidas credenciales de tracking y límites Redis. Sus credenciales temporales van a un archivo privado en `/tmp`, no a logs o capturas de trazas. Las pruebas unitarias usan moto/fakeredis con Lua mediante lupa. CI ejecuta unitarios, regresiones, mapas y la exclusión del simulador; las integraciones reales se seleccionan expresamente.
+El smoke real usa Python de `../.venv/bin/python` con boto3/python-dotenv, configurable con `GEO_PYTHON`. `GEO_EVIDENCE_DIR` guarda capturas sin trazas/tokens. Fixtures temporales privados se limpian por claves exactas, incluidas rutas. En esta sesión se instaló Chromium bajo `/tmp/flashdelivery-playwright`; se usó `PLAYWRIGHT_BROWSERS_PATH` apuntando allí, sin modificar configuración del host.
 
-Capturas del smoke con API real: [comercio claro](../evidencias/spec08/comercio-claro-1440.png), [destinatario oscuro móvil](../evidencias/spec08/destinatario-oscuro-390.png).
+La integración genera `app/.local/live-routing-metrics.json`: latencias HTTP p50/p95 y llamadas reales a OSRM, con 17 operaciones contractuales distintas. Mide una muestra pequeña local, sin equivalencia con AWS ni SLA. Se prueban proveedor falso, NoRoute, timeout, NoSegment/puerto inaccesible real, progreso, fase, TTL, permisos, revocación, lock vencido, desvío/cooldown y concurrencia real. [Resultados y capturas](../validation.md).
 
-La unificación visual posterior a la primera entrega de SPEC-08 está documentada en [UNIFICACION](../frontend/UNIFICACION.md). No cambia los contratos HTTP ni la persistencia.
+## Límites observados
+
+Perfil automóvil como aproximación; ETA por segmentos sin tráfico real ni modelo específico de motocicleta. La geometría puede cambiar al recalcular; no hay geocodificación, historial de ubicaciones ni navegación completa. Si falla OSRM se oculta ETA y se conserva una ruta anterior marcada obsoleta cuando existe; sin ruta calculada se mantiene seguimiento por estados.
+
+NoRoute se valida con respuesta controlada; el extracto real devolvió NoSegment para un punto sin vía cercana y se probó rechazo de conexión. El GPS de teléfono y lector de pantalla humano siguen sin validarse. El mapa depende de WebGL y de tiles externos; dispone de alternativa textual. MiniStack emula las operaciones probadas, no todos los servicios AWS. Su CloudWatch local conserva START/END/REPORT, pero no los logs de aplicación observados; la medición de llamadas usa el contador Redis efímero. La compilación advierte del tamaño del bundle de MapLibre. `npm audit` señala 11 alertas altas del toolchain preexistente; la dependencia MapLibre añadida quedó sin la alerta crítica detectada en 5.15.0. No se aplicó una migración del toolchain fuera de esta SPEC.

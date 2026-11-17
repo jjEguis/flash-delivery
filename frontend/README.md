@@ -45,9 +45,9 @@ La entrada independiente `preview.html` usa React, TypeScript y Vite con datos e
 
 Código por funcionalidades en `src/features/`, shell y providers en `src/app/`, primitivas en `src/components/`, fixtures en `src/mocks/` y tokens en `src/styles/`. Pruebas adicionales: `npm run lint`, `npm run test:design` y `npm run test:design:e2e`. [Guía de revisión](../docs/frontend/FE-01-REVISION.md) y [decisiones](../docs/frontend/FE-00-DISENO.md). La revisión visual está pendiente antes de iniciar FE-02.
 
-## Seguimiento geográfico real (SPEC-08)
+## Seguimiento vial real (SPEC-08 v2)
 
-`npm run build:local` compila la aplicación completa y habilita la simulación. Los mapas se abren en `#/ubicacion/<id>` y `#/mapa/<token>` dentro del shell principal; `design-dist/geo.html` redirige enlaces anteriores. Usa React, los tokens del diseño aprobado, Leaflet local y la API real. Comercio y destinatario consultan el mapa; el repartidor activa simulación o GPS con consentimiento. Los tokens públicos nuevos caducan y pueden revocarse. Los enlaces históricos siguen mostrando estados, sin permiso geográfico.
+`npm run build:local` compila la aplicación completa y habilita la simulación. Los mapas se abren en `#/ubicacion/<id>` y `#/mapa/<token>` dentro del shell principal; `design-dist/geo.html` redirige enlaces anteriores. Usa React, los tokens del diseño aprobado, MapLibre GL JS 6.19.0 con worker local, OSRM privado y la API real. Comercio y destinatario consultan ruta, ETA aproximada y distancia; el repartidor activa simulación vial o GPS con consentimiento. En «Nuevo pedido» se seleccionan recogida y entrega en el mapa, opcionalmente. OSRM requiere la preparación descrita en la guía GEO. El simulador exige además configuración explícita en backend. Los tokens públicos nuevos caducan y pueden revocarse. Los enlaces históricos siguen mostrando estados, sin permiso geográfico.
 
 `npm run build` genera la versión sin controles de simulación. Pruebas: `npm run test:geo:e2e` (API interceptada), `npm run test:geo:production` (compilación normal previa), `npm run test:geo:real` (MiniStack/Redis/:8080 reales y compilación local previa). Esta última requiere Python local con boto3 y python-dotenv, configurable por `GEO_PYTHON`; crea y elimina sus datos aislados. [Guía completa](../docs/geo/README.md).
 

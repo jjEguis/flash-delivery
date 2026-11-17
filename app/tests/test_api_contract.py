@@ -13,7 +13,7 @@ from lambdas.shared.exceptions import UnauthorizedError
 from lambdas.shared.http import router
 
 OPENAPI = ROOT.parent / "docs" / "api" / "openapi.json"
-PUBLIC = {"POST /api/v1/auth/dev-login", "GET /api/v1/zones", "GET /api/v1/tracking/{token}", "GET /api/v1/tracking/{token}/location"}
+PUBLIC = {"POST /api/v1/auth/dev-login", "GET /api/v1/zones", "GET /api/v1/tracking/{token}", "GET /api/v1/tracking/{token}/location", "GET /api/v1/tracking/{token}/route"}
 
 
 @pytest.fixture(scope="module")

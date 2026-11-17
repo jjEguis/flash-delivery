@@ -28,7 +28,7 @@ def entorno_test(monkeypatch):
         "AWS_ACCESS_KEY_ID": "test", "AWS_SECRET_ACCESS_KEY": "test",
         "AWS_DEFAULT_REGION": "us-east-1", "AWS_REGION": "us-east-1",
         "AWS_EC2_METADATA_DISABLED": "true", "DYNAMODB_TABLE_NAME": "test-tabla",
-        "ENVIRONMENT": "local", "REDIS_HOST": "localhost", "REDIS_PORT": "6379",
+        "TRACKING_SIMULATION_ENABLED": "true", "ENVIRONMENT": "local", "REDIS_HOST": "localhost", "REDIS_PORT": "6379",
         "REDIS_TTL": "300",
     }.items():
         monkeypatch.setenv(name, value)

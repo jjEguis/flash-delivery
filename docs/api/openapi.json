@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "FlashDelivery API",
-    "version": "1.0.0",
-    "description": "API v1 de FlashDelivery (SPEC-03). Entorno local con MiniStack: la autenticación es un adaptador de desarrollo con tokens HMAC, no apto para producción. Los IDs de comercio y repartidor coinciden con el actor autenticado (un perfil por usuario en el MVP). Los comandos transaccionales exigen Idempotency-Key (la publicación de ubicación usa recordedAt): la misma clave con el mismo contenido devuelve el resultado previo; con otro contenido responde 409 IDEMPOTENCY_CONFLICT. SPEC-08: ubicación efímera, tokens nuevos aleatorios con expiración y revocación; sin coordenadas en DynamoDB."
+    "version": "1.1.0",
+    "description": "API v1 de FlashDelivery (SPEC-03). Entorno local con MiniStack: la autenticación es un adaptador de desarrollo con tokens HMAC, no apto para producción. Los IDs de comercio y repartidor coinciden con el actor autenticado (un perfil por usuario en el MVP). Los comandos transaccionales exigen Idempotency-Key (la publicación de ubicación usa recordedAt): la misma clave con el mismo contenido devuelve el resultado previo; con otro contenido responde 409 IDEMPOTENCY_CONFLICT. SPEC-08: ubicación efímera, tokens nuevos aleatorios con expiración y revocación; coordenadas estáticas opcionales del pedido en DynamoDB (E6), muestras efímeras en Redis. SPEC-08 v2: rutas OSRM locales y ETA aproximada sin tráfico real; simulación validada por backend."
   },
   "servers": [{"url": "http://127.0.0.1:8080", "description": "Frontend local con proxy a API Gateway en MiniStack"}],
   "security": [{"bearer": []}],
@@ -71,7 +71,7 @@
         "tags": [
           "tracking"
         ],
-        "summary": "Ubicación: comercio propietario o repartidor asignado; FRESH hasta 30 s",
+        "summary": "Ubicación del propietario/asignado: FRESH hasta 15 s, STALE hasta 120 s, luego UNAVAILABLE",
         "parameters": [
           {
             "$ref": "#/components/parameters/OrderId"
@@ -425,6 +425,105 @@
         "responses": {"200": {"description": "Agregado", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Stats"}}}},
                       "400": {"$ref": "#/components/responses/Error"}, "401": {"$ref": "#/components/responses/Error"}, "403": {"$ref": "#/components/responses/Error"}}
       }
+    },
+    "/api/v1/orders/{orderId}/route": {
+      "get": {
+        "tags": [
+          "tracking"
+        ],
+        "summary": "Ruta activa y ETA aproximada, perfil automóvil sin tráfico real. Sin posición devuelve puntos sin origen inventado.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrderId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Correcto",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderRoute"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/tracking/{token}/route": {
+      "get": {
+        "tags": [
+          "tracking"
+        ],
+        "summary": "Ruta activa y ETA aproximada, perfil automóvil sin tráfico real. Sin posición devuelve puntos sin origen inventado.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 257
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Correcto",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderRoute"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
     }
   },
   "components": {
@@ -475,6 +574,22 @@
               "SIMULATED",
               "BROWSER_GPS"
             ]
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "speedMps": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "headingDegrees": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 360,
+            "exclusiveMaximum": true
           }
         }
       },
@@ -533,6 +648,22 @@
                   "SIMULATED",
                   "BROWSER_GPS"
                 ]
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "speedMps": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "headingDegrees": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 360,
+                "exclusiveMaximum": true
               }
             },
             "nullable": true
@@ -581,15 +712,260 @@
       "EnabledInput": {"type": "object", "required": ["enabled"], "properties": {"enabled": {"type": "boolean"}}},
       "Store": {"type": "object", "properties": {"storeId": {"$ref": "#/components/schemas/Id"}, "name": {"type": "string"}, "zoneId": {"$ref": "#/components/schemas/Id"}, "enabled": {"type": "boolean"}, "createdAt": {"$ref": "#/components/schemas/Timestamp"}, "updatedAt": {"$ref": "#/components/schemas/Timestamp"}, "version": {"type": "integer"}}},
       "Courier": {"type": "object", "properties": {"courierId": {"$ref": "#/components/schemas/Id"}, "name": {"type": "string"}, "zoneId": {"$ref": "#/components/schemas/Id"}, "enabled": {"type": "boolean"}, "available": {"type": "boolean"}, "createdAt": {"$ref": "#/components/schemas/Timestamp"}, "updatedAt": {"$ref": "#/components/schemas/Timestamp"}, "version": {"type": "integer"}}},
-      "CreateOrder": {"type": "object", "required": ["pickupAddress", "dropoffAddress", "feeMinor"], "properties": {"pickupAddress": {"type": "string", "minLength": 1, "maxLength": 300}, "dropoffAddress": {"type": "string", "minLength": 1, "maxLength": 300}, "feeMinor": {"type": "integer", "minimum": 1, "maximum": 100000000, "description": "Tarifa en la unidad mínima (COP)"}}},
-      "Order": {"type": "object", "properties": {"orderId": {"$ref": "#/components/schemas/Id"}, "storeId": {"$ref": "#/components/schemas/Id"}, "zoneId": {"$ref": "#/components/schemas/Id"}, "status": {"$ref": "#/components/schemas/Status"}, "courierId": {"$ref": "#/components/schemas/Id"}, "pickupAddress": {"type": "string"}, "dropoffAddress": {"type": "string", "description": "Solo en el detalle"}, "feeMinor": {"type": "integer"}, "currency": {"type": "string", "example": "COP"}, "createdAt": {"$ref": "#/components/schemas/Timestamp"}, "updatedAt": {"$ref": "#/components/schemas/Timestamp"}, "version": {"type": "integer"}}},
+      "CreateOrder": {
+        "type": "object",
+        "required": ["pickupAddress", "dropoffAddress", "feeMinor"],
+        "properties": {
+          "pickupAddress": {"type": "string", "minLength": 1, "maxLength": 300},
+          "dropoffAddress": {"type": "string", "minLength": 1, "maxLength": 300},
+          "feeMinor": {"type": "integer", "minimum": 1, "maximum": 100000000, "description": "Tarifa en la unidad mínima (COP)"},
+          "pickupLocation": {
+            "$ref": "#/components/schemas/OrderLocation"
+          },
+          "dropoffLocation": {
+            "$ref": "#/components/schemas/OrderLocation"
+          }
+        },
+        "description": "Coordenadas opcionales, ambas juntas, elegidas en mapa; omitirlas mantiene pedidos sin GPS. Nunca se infieren desde direcciones."
+      },
+      "Order": {
+        "type": "object",
+        "properties": {
+          "orderId": {"$ref": "#/components/schemas/Id"},
+          "storeId": {"$ref": "#/components/schemas/Id"},
+          "zoneId": {"$ref": "#/components/schemas/Id"},
+          "status": {"$ref": "#/components/schemas/Status"},
+          "courierId": {"$ref": "#/components/schemas/Id"},
+          "pickupAddress": {"type": "string"},
+          "dropoffAddress": {"type": "string", "description": "Solo en el detalle"},
+          "feeMinor": {"type": "integer"},
+          "currency": {"type": "string", "example": "COP"},
+          "createdAt": {"$ref": "#/components/schemas/Timestamp"},
+          "updatedAt": {"$ref": "#/components/schemas/Timestamp"},
+          "version": {"type": "integer"},
+          "pickupLocation": {
+            "$ref": "#/components/schemas/OrderLocation"
+          },
+          "dropoffLocation": {
+            "$ref": "#/components/schemas/OrderLocation"
+          }
+        }
+      },
       "CreatedOrder": {"allOf": [{"$ref": "#/components/schemas/Order"}, {"type": "object", "properties": {"trackingToken": {"type": "string", "description": "orderId.secret; se entrega al destinatario"}}}]},
       "OrderPage": {"type": "object", "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/Order"}}, "nextCursor": {"type": "string", "nullable": true}}},
       "Event": {"type": "object", "properties": {"eventType": {"type": "string", "enum": ["CREATED", "ASSIGNED", "PICKED_UP", "DELIVERED", "CANCELLED", "FAILED"]}, "occurredAt": {"$ref": "#/components/schemas/Timestamp"}}},
       "EventPage": {"type": "object", "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/Event"}}, "nextCursor": {"type": "string", "nullable": true}}},
       "Tracking": {"type": "object", "properties": {"orderId": {"$ref": "#/components/schemas/Id"}, "status": {"$ref": "#/components/schemas/Status"}, "updatedAt": {"$ref": "#/components/schemas/Timestamp"}, "events": {"type": "array", "items": {"$ref": "#/components/schemas/Event"}}, "nextCursor": {"type": "string", "nullable": true}}},
       "Stats": {"type": "object", "properties": {"storeId": {"$ref": "#/components/schemas/Id"}, "month": {"type": "string"}, "deliveredCount": {"type": "integer"}, "totalFeeMinor": {"type": "integer"}, "updatedAt": {"$ref": "#/components/schemas/Timestamp"}, "source": {"type": "string", "enum": ["cache", "dynamodb"]}}},
-      "Presence": {"type": "object", "properties": {"courierId": {"$ref": "#/components/schemas/Id"}, "zoneId": {"$ref": "#/components/schemas/Id"}, "lastHeartbeatEpoch": {"type": "number"}, "expiresInSeconds": {"type": "integer"}}}
+      "Presence": {"type": "object", "properties": {"courierId": {"$ref": "#/components/schemas/Id"}, "zoneId": {"$ref": "#/components/schemas/Id"}, "lastHeartbeatEpoch": {"type": "number"}, "expiresInSeconds": {"type": "integer"}}},
+      "OrderLocation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "latitude",
+          "longitude"
+        ],
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "minimum": 11.12,
+            "maximum": 11.36
+          },
+          "longitude": {
+            "type": "number",
+            "minimum": -74.28,
+            "maximum": -74.05
+          }
+        }
+      },
+      "RouteSnapshot": {
+        "type": "object",
+        "nullable": true,
+        "additionalProperties": false,
+        "properties": {
+          "distanceMeters": {
+            "type": "number",
+            "minimum": 0
+          },
+          "durationSeconds": {
+            "type": "number",
+            "minimum": 0
+          },
+          "remainingMeters": {
+            "type": "number",
+            "minimum": 0
+          },
+          "progressMeters": {
+            "type": "number",
+            "minimum": 0
+          },
+          "distanceToRouteMeters": {
+            "type": "number",
+            "minimum": 0
+          },
+          "geometry": {
+            "type": "object",
+            "required": [
+              "type",
+              "coordinates"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "LineString"
+                ]
+              },
+              "coordinates": {
+                "type": "array",
+                "minItems": 2,
+                "items": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          },
+          "etaSeconds": {
+            "type": "number",
+            "minimum": 0,
+            "nullable": true
+          },
+          "calculatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "routeVersion": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "ASSIGNED",
+              "PICKED_UP"
+            ]
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "offRoute": {
+            "type": "boolean"
+          },
+          "segmentIndex": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "segmentFraction": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "segmentDurations": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "segmentDistances": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "distanceMeters",
+                "durationSeconds",
+                "type",
+                "modifier",
+                "location"
+              ],
+              "properties": {
+                "distanceMeters": {
+                  "type": "number"
+                },
+                "durationSeconds": {
+                  "type": "number"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "modifier": {
+                  "type": "string"
+                },
+                "location": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "distanceMeters",
+          "durationSeconds",
+          "remainingMeters",
+          "progressMeters",
+          "distanceToRouteMeters",
+          "geometry",
+          "etaSeconds",
+          "calculatedAt",
+          "routeVersion",
+          "phase",
+          "stale",
+          "offRoute",
+          "segmentIndex",
+          "segmentFraction"
+        ]
+      },
+      "OrderRoute": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "orderId",
+          "status",
+          "route",
+          "points"
+        ],
+        "properties": {
+          "orderId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "route": {
+            "$ref": "#/components/schemas/RouteSnapshot"
+          },
+          "points": {
+            "type": "object",
+            "nullable": true,
+            "required": [
+              "pickup",
+              "dropoff"
+            ],
+            "properties": {
+              "pickup": {
+                "$ref": "#/components/schemas/OrderLocation"
+              },
+              "dropoff": {
+                "$ref": "#/components/schemas/OrderLocation"
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

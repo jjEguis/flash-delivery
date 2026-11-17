@@ -24,8 +24,11 @@ def track(request):
 
 
 def publish(request):
-    return 202, service.publish(shared_adapter(), RedisLocationStore(shared_redis()), request.actor,
-                                request.path_params['orderId'], request.json())
+    from lambdas.tracking.routes import advance_safely
+    adapter, client = shared_adapter(), shared_redis()
+    return 202, service.publish(adapter, RedisLocationStore(client), request.actor,
+                                request.path_params['orderId'], request.json(),
+                                on_accepted=lambda order, point: advance_safely(adapter, client, order, point))
 
 
 def latest(request):
@@ -39,13 +42,26 @@ def public_latest(request):
 
 
 def stop(request):
-    service.stop(shared_adapter(), RedisLocationStore(shared_redis()), request.actor, request.path_params['orderId'])
+    from lambdas.tracking.routes import clear_routes
+    client = shared_redis()
+    service.stop(shared_adapter(), RedisLocationStore(client), request.actor, request.path_params['orderId'])
+    service._dependency(lambda: clear_routes(client, request.path_params['orderId']))
     return 204, None
 
 
 def revoke(request):
     service.revoke(shared_adapter(), request.actor, request.path_params['orderId'])
     return 204, None
+
+
+def route(request):
+    from lambdas.tracking.routes import get_route
+    return 200, get_route(shared_adapter(), shared_redis(), actor=request.actor, order_id=request.path_params["orderId"])
+
+
+def public_route(request):
+    from lambdas.tracking.routes import get_route
+    return 200, get_route(shared_adapter(), shared_redis(), token=unquote(request.path_params["token"]))
 
 
 ROUTES = {
@@ -55,5 +71,7 @@ ROUTES = {
     "DELETE /api/v1/orders/{orderId}/location": stop,
     "GET /api/v1/tracking/{token}/location": public_latest,
     "DELETE /api/v1/orders/{orderId}/tracking-token": revoke,
+    "GET /api/v1/orders/{orderId}/route": route,
+    "GET /api/v1/tracking/{token}/route": public_route,
 }
 main = router(ROUTES)

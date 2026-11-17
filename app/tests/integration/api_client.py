@@ -78,7 +78,9 @@ class Api:
         try:
             from lambdas.tracking.location_store import location_key
             for order_id in self.created["orders"]:
-                cache.delete(location_key(order_id), f"tracking:rate:order:{order_id}")
+                cache.delete(location_key(order_id), f"tracking:rate:order:{order_id}", f"tracking:order:{order_id}:routing-calls")
+                from lambdas.tracking.routes import clear_routes
+                clear_routes(cache, order_id)
             for c in self.created["couriers"]:
                 cache.delete(f"tracking:rate:courier:{c}")
                 cache.delete(heartbeat_key(c))

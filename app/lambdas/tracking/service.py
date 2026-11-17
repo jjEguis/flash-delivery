@@ -33,7 +33,7 @@ class LocationRateLimit(DomainError):
 
 
 def validate_point(body, now):
-    if not isinstance(body, dict) or body.keys() - {"latitude", "longitude", "accuracyMeters", "recordedAt", "source"}:
+    if not isinstance(body, dict) or body.keys() - {"latitude", "longitude", "accuracyMeters", "recordedAt", "source", "sequence", "speedMps", "headingDegrees"}:
         raise LocationValidationError("La ubicación contiene campos no admitidos")
     for name, lower, upper in (("latitude", -90, 90), ("longitude", -180, 180), ("accuracyMeters", 0, float('inf'))):
         value = body.get(name)
@@ -47,6 +47,11 @@ def validate_point(body, now):
             raise LocationValidationError(f"{name} fuera de rango")
     if not isinstance(body.get("source"), str) or body.get("source") not in {"SIMULATED", "BROWSER_GPS"}:
         raise LocationValidationError("source debe ser SIMULATED o BROWSER_GPS")
+    for name, upper in (("speedMps", 100), ("headingDegrees", 360)):
+        if name in body and (type(body[name]) not in (int, float) or not 0 <= body[name] <= upper or not math.isfinite(body[name]) or (name == "headingDegrees" and body[name] == 360)):
+            raise LocationValidationError(f"{name} fuera de rango")
+    if "sequence" in body and (type(body["sequence"]) is not int or not 0 <= body["sequence"] <= 9007199254740991):
+        raise LocationValidationError("sequence debe ser un entero seguro no negativo")
     raw = body.get("recordedAt")
     try:
         if not isinstance(raw, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z', raw):
@@ -90,13 +95,15 @@ def _dependency(operation):
         raise DependencyUnavailableError("La ubicación no está disponible; puedes seguir los estados del pedido") from exc
 
 
-def publish(adapter, store: LocationStore, actor, order_id, body, *, reader: OrderReader | None = None):
+def publish(adapter, store: LocationStore, actor, order_id, body, *, reader: OrderReader | None = None, on_accepted=None):
     now = time.time()
     reader = reader or OrdersRepository(adapter)
     order = _own_order(reader, actor, order_id, write=True)
     if order['status'] not in ACTIVE:
         raise ConflictError("Solo se comparte ubicación durante una entrega activa", "LOCATION_NOT_ACTIVE")
     point = validate_point(body, now)
+    if point["source"] == "SIMULATED" and not (os.getenv("ENVIRONMENT") == "local" and os.getenv("TRACKING_SIMULATION_ENABLED", "false").lower() == "true"):
+        raise ForbiddenError("La simulación está deshabilitada en este entorno")
     accepted = _dependency(lambda: store.publish(order_id, actor.courier_id, point, now))
     if accepted == -1:
         raise LocationRateLimit("Espera al menos tres segundos antes de enviar otra ubicación")
@@ -105,6 +112,8 @@ def publish(adapter, store: LocationStore, actor, order_id, body, *, reader: Ord
     if current['status'] not in ACTIVE or current.get('courierId') != actor.courier_id:
         _dependency(lambda: store.clear(order_id))
         raise ConflictError("La entrega ya no está activa", "LOCATION_NOT_ACTIVE")
+    if accepted == 1 and on_accepted is not None:
+        on_accepted(current, point)
     return {"orderId": order_id, "recordedAt": point['recordedAt'], "accepted": accepted == 1}
 
 
@@ -122,7 +131,7 @@ def latest(adapter, store: LocationStore, *, actor=None, order_id=None, token=No
     if order['status'] not in ACTIVE:
         return result
     point = _dependency(lambda: store.latest(order_id))
-    if not point or 'stoppedAt' in point or point.get('courierId') != order.get('courierId'):
+    if not point or 'stoppedAt' in point or point.get('courierId') != order.get('courierId') or time.time()-point.get('epoch', 0) > int(os.getenv('LOCATION_TTL_SECONDS', '120')):
         return result
     # Revalida estado oficial antes de entregar coordenadas; no hay transacción distribuida Redis/DDB.
     current = _read_order(reader, order_id)
@@ -130,8 +139,8 @@ def latest(adapter, store: LocationStore, *, actor=None, order_id=None, token=No
         result['status'] = current['status']
         result['updatedAt'] = current['updatedAt']
         return result
-    result['location'] = {key: point[key] for key in ('latitude', 'longitude', 'accuracyMeters', 'recordedAt', 'source') if key in point}
-    result['freshness'] = 'FRESH' if time.time() - point['epoch'] <= int(os.getenv('LOCATION_FRESH_SECONDS', '30')) else 'STALE'
+    result['location'] = {key: point[key] for key in ('latitude', 'longitude', 'accuracyMeters', 'recordedAt', 'source', 'sequence', 'speedMps', 'headingDegrees') if key in point}
+    result['freshness'] = 'FRESH' if time.time() - point['epoch'] <= int(os.getenv('LOCATION_FRESH_SECONDS', '15')) else 'STALE'
     return result
 
 
@@ -154,6 +163,8 @@ def clear_finished(client, order_id):
     try:
         from lambdas.tracking.location_store import RedisLocationStore
         RedisLocationStore(client).clear(order_id)
+        from lambdas.tracking.routes import clear_routes
+        clear_routes(client, order_id)
     except RedisError:
         import logging
         logging.getLogger(__name__).warning('location_cleanup_unavailable')
