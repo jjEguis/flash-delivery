@@ -1,5 +1,11 @@
 # Registro de validación
 
+## Corrección de bloqueo de tiles — 2026-11-17
+
+La captura del usuario mostró tiles de OSM con aviso 403. Se identificó `Referrer-Policy: no-referrer` en el servidor estático, incompatible con la identificación de origen exigida por el proveedor. El HTML y el worker ahora reciben `strict-origin`: los tiles envían únicamente el origen, sin ruta, query ni fragmento de seguimiento. Las respuestas de API y el cliente `geoApi` conservan `no-referrer`. Se mantiene el proveedor y su caché, sin rotar hosts ni añadir proxies.
+
+Compilación normal/local correctas. Prueba de navegador contra `server.py`: **2 passed** (exclusión del simulador y regresión de encabezados). La nueva prueba intercepta tiles y API, comprueba Referer igual al origen y ausencia del token del fragmento. Se reinició `web` y se verificó la política en :8080 y en el worker. Referencia: [política oficial de OSM](https://operations.osmfoundation.org/policies/tiles/). Recargar la página es necesario para aplicar la nueva política al documento ya abierto.
+
 ## SPEC-08 v2 — rutas viales, progreso y ETA — 2026-11-17
 
 Implementación de [Live Delivery Tracking v2](specs/SPEC-08_LIVE_DELIVERY_TRACKING_v2.md), sección 13 normativa. [Verificación previa](geo/GEO-00-V2.md), [guía, migración y limitaciones](geo/README.md), [diseño aplicado](geo/DISENO-V2.md). Se partió de `origin/develop` actualizado en `feature/spec-08-live-delivery-v2`.
