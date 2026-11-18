@@ -1,6 +1,6 @@
 # SPEC-10 — Bandeja de aprobación y auditoría administrativa
 
-Estado: implementada y validada; pendiente revisión del PR. Base: develop con SPEC-09 fusionada.
+Estado: implementada, validada y fusionada mediante PR #15. Base: develop con SPEC-09 fusionada.
 
 ## Alcance y decisiones
 

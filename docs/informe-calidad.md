@@ -1,5 +1,7 @@
 # Informe de calidad y rendimiento — SPEC-06
 
+**Medición histórica de SPEC-06**, no una nueva corrida ni el conteo actual de pruebas. El estado hasta SPEC-10 está en [validación](validation.md); el modelo vigente, en [datos](data-model/README.md).
+
 Fecha: 2026-11-13. Datos crudos: [`evidencias/benchmark-10k.json`](evidencias/benchmark-10k.json). Script reproducible: `app/scripts/benchmark.py`.
 
 ## Entorno de medición
@@ -29,7 +31,7 @@ El script crea un namespace `BENCH_<id>`, mide, guarda `app/.local/benchmark.jso
 | AP08 Query GSI2, 25 abiertos de la zona | 25 | 79,4 ms | 92,3 ms |
 | Misma necesidad que AP05 con Scan (sin índice) | **20 017** (9 páginas) | 1 444,2 ms | 1 522,4 ms |
 
-Sin índice, obtener los 25 pedidos más recientes obliga a leer toda la tabla, filtrar en la aplicación y ordenar: 800 veces más ítems leídos que la Query. En DynamoDB real el costo de lectura se factura por ítems y tamaño leídos, así que esa diferencia es también de costo. Por eso ninguna ruta operativa usa Scan.
+Sin índice, obtener los 25 pedidos más recientes obliga a leer toda la tabla, filtrar en la aplicación y ordenar: 800 veces más ítems leídos que la Query. En DynamoDB real las unidades de lectura dependen del tamaño evaluado y la consistencia; estos conteos locales no son una medición de facturación. [Operaciones y consumo](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/read-write-operations.html). Por eso ninguna ruta operativa usa Scan.
 
 ### Caché de estadísticas (Redis, Cache-Aside)
 
@@ -70,7 +72,7 @@ Cubren permisos (401/403 y aislamiento entre comercios), validación (400), pagi
 
 ## Limitaciones de MiniStack
 
-- **Las Query sobre GSI crecen con el tamaño de la partición.** AP05 (partición de 10 000 pedidos) tarda unos 350 ms, mientras AP06/AP08 (particiones de unos 2 000) tardan unos 78 ms, aunque las tres leen 25 ítems. El emulador parece recorrer la partición del índice en cada consulta; en DynamoDB la latencia depende de los ítems devueltos. Las latencias absolutas de este informe **no** representan DynamoDB real; los ítems leídos sí reflejan el diseño.
+- **Las Query sobre GSI crecen con el tamaño de la partición.** AP05 (partición de 10 000 pedidos) tarda unos 350 ms, mientras AP06/AP08 (particiones de unos 2 000) tardan unos 78 ms, aunque las tres leen 25 ítems. El emulador parece recorrer la partición del índice en cada consulta; no se debe extrapolar esa curva a DynamoDB real ni afirmar que su latencia dependa únicamente de los ítems devueltos. Las latencias absolutas de este informe **no** representan DynamoDB real; los ítems leídos sí reflejan el diseño.
 - **Rendimiento de escritura y concurrencia limitado:** unos 70 ítems/s en carga masiva y unas 60 operaciones/s bajo contención; MiniStack atiende las solicitudes prácticamente en serie. Por eso la carga de 100 000 pedidos (unos 46 minutos estimados) no se ejecutó en este equipo; el script la admite con `--orders 100000`.
 - **`ScannedCount` no es fiable en el emulador:** el informe cuenta los ítems devueltos página a página.
 - **La consistencia eventual de los GSI** se ve como un retraso breve; las pruebas de integración esperan la convergencia con reintentos acotados. El emulador no reproduce los tiempos reales de propagación.
@@ -78,7 +80,7 @@ Cubren permisos (401/403 y aislamiento entre comercios), validación (400), pagi
 
 ## Conclusiones
 
-- El diseño de tabla única resuelve los doce patrones con GetItem o Query, leyendo solo los ítems que se devuelven. El Scan equivalente lee la tabla completa y su costo crece con el volumen.
+- El diseño de tabla única resuelve los accesos DynamoDB del conjunto original AP01–AP12 con GetItem/Query; AP10 usa Redis. La comparación no mide bytes de capacidad ni representa los patrones nuevos de aprobaciones. El Scan equivalente lee la tabla completa y su costo crece con el volumen.
 - La aceptación competitiva es correcta bajo carga real de 100 hilos: un ganador, sin escrituras parciales y con errores de dominio estables.
 - Redis acelera las lecturas repetidas (de 2,4 ms a 0,17 ms) sin convertirse en fuente de verdad: su caída degrada la presencia (503), pero no afecta las asignaciones ni las estadísticas.
 - Estos resultados no demuestran que NoSQL sea superior a SQL en general. Muestran que, para patrones de acceso conocidos de antemano, la tabla única con índices dispersos ofrece lecturas acotadas y transacciones atómicas. A cambio, las consultas ad hoc no previstas requieren un índice nuevo o un proceso analítico aparte.

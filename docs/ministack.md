@@ -1,37 +1,32 @@
-# Verificación de MiniStack
+# Compatibilidad local de MiniStack
 
-Actualización 2026-11-12: ejecución directa del incremento 0 completada. Persistencia tras reinicio ordenado y Lambda empaquetada desde S3, con DynamoDB/Redis accesibles desde el runtime, verificadas. Suite: **20 passed** antes y después del reinicio sin reprovisionar. La matriz siguiente conserva la evidencia de la fase anterior; los resultados actuales están en [validación](validation.md).
+Revisión documental: 2026-11-18. Versión fijada por defecto en Compose: **ministackorg/ministack:1.5.36**. Redis y OSRM son servicios separados, no características emuladas de MiniStack. La evidencia de cada ejecución, incluida la más reciente de SPEC-10, está en [validación](validation.md).
 
-Fuentes oficiales consultadas el 10 de noviembre de 2026:
+## Qué está comprobado en el proyecto
 
-- [Proyecto y catálogo](https://github.com/ministackorg/ministack).
-- [Versión del código](https://github.com/ministackorg/ministack/blob/main/pyproject.toml): 1.5.36.
-- [Compose oficial](https://github.com/ministackorg/ministack/blob/main/docker-compose.yml).
-- [Implementación DynamoDB](https://github.com/ministackorg/ministack/blob/main/ministack/services/dynamodb.py).
-- [Implementación HTTP API](https://github.com/ministackorg/ministack/blob/main/ministack/services/apigateway.py).
-- [Publicación de imágenes versionadas](https://github.com/ministackorg/ministack/blob/main/.github/workflows/docker-publish.yml).
-
-| Capacidad | Evidencia en fuentes | Comprobación de este proyecto |
+| Capacidad | Evidencia local conservada | Límite de la afirmación |
 | --- | --- | --- |
-| DynamoDB Put/Get/Update/Query | Catálogo e implementación | Test de escritura, lectura, actualización y Query por ambos GSIs; validado por el usuario con suite completa |
-| GSI1/GSI2 | Soporte GSI en DynamoDB | DescribeTable, claves exactas y consultas; validado por el usuario |
-| PAY_PER_REQUEST | Ejemplos oficiales CreateTable | BillingModeSummary; validado por el usuario |
-| TransactWriteItems | Catálogo y handler DynamoDB | Commit y rollback condicional de dos operaciones; validado por el usuario |
-| Python Lambda | Ejecutor local documentado | Handler verificado directamente; ejecución emulada validada por el usuario |
-| HTTP API + AWS_PROXY | Implementación API Gateway v2 | GET por ruta de ejecución propia de MiniStack; validado por el usuario |
-| CDK/CloudFormation | Proyecto declara compatibilidad | Plantilla sin assets ni bootstrap; síntesis comprobada aquí; aplicación confirmada por el usuario |
-| Persistencia | PERSIST_STATE y STATE_DIR documentados | Volumen configurado; reinicio con conservación pendiente |
+| DynamoDB y tabla/GSIs | Put/Get/Update/Query, índices dispersos y layout en tests de modelo/acceso | No acredita rendimiento ni coste AWS |
+| TransactWriteItems | Commit/rollback, estados/vistas/idempotencia, 100 aceptaciones y carrera suspensión/accept | El comportamiento temporal del emulador puede diferir |
+| API Gateway → Lambda Python | Módulos empaquetados y flujos HTTP integrados | No equivale al aislamiento runtime de AWS |
+| S3/CloudFormation/CDK | Artefacto local reproducible, síntesis y aplicación mediante provision | No se usa bootstrap AWS ni se declara soporte universal de CDK |
+| Acceso Redis desde Lambda | Presencia, caché y Tracking mediante red Compose | Redis no adjudica ni participa en transacción DynamoDB |
+| Acceso OSRM desde Lambda | Geometría/progreso y recálculo en integración local | OSRM es privado al entorno Compose, no servicio AWS |
+| Persistencia tras reinicio ordenado | Marcadores DynamoDB/Redis y servicios después de reinicio, registrado en la fase de infraestructura | No prueba corte eléctrico, backups ni desastre |
+| IAM | Roles/permisos sintetizados | No se acredita enforcement equivalente a AWS |
 
-No se usaron variables de LocalStack ni se infirió compatibilidad a partir de él.
-Se utiliza `/_ministack/health` y la ruta de
-datos `/_aws/execute-api/...` que documenta
-MiniStack. La configuración de persistencia y el ejecutor local siguen su documentación.
-La versión del código no demuestra que su tag
- Docker pueda descargarse: debe comprobarse
-con `docker compose pull` en el host de validación.
+Se usan rutas propias del emulador `/_ministack/health` y `/_aws/execute-api/<ApiId>/local`. No se utilizan variables de LocalStack ni se infiere compatibilidad a partir de él. Los SDK configuran endpoint local explícito.
 
-No se detectó una funcionalidad requerida explícitamente ausente en las fuentes.
-No hay base para declarar una incompatibilidad concreta sin ejecutar el entorno.
-Si la integración HTTP falla, la alternativa de biblioteca estándar permite verificar
-el contrato del handler y deja pendiente API Gateway. Si fallan GSIs o atomicidad,
-la fase permanece bloqueada: no sustituir MiniStack ni simular éxito automáticamente.
+MiniStack ejecuta Lambda Python localmente; el contenedor no necesita socket Docker. Los módulos comparten el paquete del proyecto y cada entrada usa `lambdas.<modulo>.handler.main`. Readiness comprueba dependencias, mientras las integraciones verifican operaciones y no solo un HTTP 200 de salud.
+
+## Qué no se debe concluir
+
+Las pruebas locales no demuestran latencia/distribución física/capacidad de DynamoDB real, propagación idéntica de GSI, facturación AWS ni aislamiento IAM productivo. La medición de 10k pedidos es evidencia histórica del emulador, con metodología y límites en [informe de calidad](informe-calidad.md).
+
+El repositorio fija versiones observadas; no afirma que 1.5.36 sea la versión más reciente del proveedor. Actualizar imagen o cambiar de emulador requiere repetir las integraciones. Las pruebas de persistencia se ejecutan separadas de otras suites para no interrumpirlas.
+
+## Reproducción y procedencia
+
+Usar los comandos de [entorno local](ENTORNO_LOCAL.md) para provisionar y ejecutar pytest con `-m integration`. Si faltan GSIs/atomicidad/rutas, registrar el fallo y corregirlo: una prueba directa del handler no sustituye a API Gateway y un mock no acredita integración.
+
+Proyecto de referencia del emulador: [ministackorg/ministack](https://github.com/ministackorg/ministack). La evidencia de compatibilidad que se presenta aquí procede del código/configuración y tests de FlashDelivery sobre la imagen fijada, no de interpretar su catálogo como garantía de paridad AWS.

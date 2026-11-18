@@ -1,119 +1,65 @@
-> Documento histórico de fase 1. Para el diseño vigente consultar [arquitectura general](ARQUITECTURA_GENERAL.md) y [especificaciones](specs/README.md). Sus diferencias no deben trasladarse a código sin reconciliación.
+# Patrones de acceso vigentes — AP01 a AP16
 
-> El modelo implementado por SPEC-01 está en [modelo de persistencia](data-model/README.md); este documento conserva únicamente el diseño anterior.
+Revisión: 2026-11-18, hasta SPEC-10. Reemplaza la propuesta de fase 1 conservada en Git. [Motivación de las claves](ARQUITECTURA_GENERAL.md), [esquema físico](data-model/README.md), [OpenAPI](api/openapi.json). No hay estado OPEN de negocio ni ítem ORDER/ASSIGNMENT: se usa PENDING y COURIER/ACTIVE.
 
-# Patrones de acceso — diseño v1
+## Matriz de acceso
 
-Propuesta para implementación futura en `FlashDeliveryTable`, sin modificar todavía
-recursos ni datos. Todos los atributos de claves son String. Los módulos son dueños
-de sus ítems aunque compartan partición. No se usan Scan ni FilterExpression para
-resolver búsquedas principales.
+`p / s` indica partition key y sort key/prefijo de la tabla o índice indicado. Las rutas se muestran sin el prefijo común `/api/v1`. Detalle de parámetros y respuestas: OpenAPI. AP15/AP16 hacen explícitos accesos técnicos ya existentes; su numeración no añade endpoints ni cambia AP01–AP14.
 
-## Convenciones y registros
+| ID / pregunta | Operación y clave | Consistencia / orden | Consumidor o ruta |
+| --- | --- | --- | --- |
+| AP01 Perfil de comercio | GetItem STORE#id / PROFILE | Fuerte; un ítem | Stores.get_my_store; creación; GET /stores/me |
+| AP02 Perfil de repartidor | GetItem COURIER#id / PROFILE | Fuerte; un ítem | Couriers, Dispatch, Availability; GET /couriers/me |
+| AP03 Pedido por ID | GetItem ORDER#id / META | Fuerte; un ítem | Orders/Dispatch/Tracking; GET /orders/{orderId} |
+| AP04 Eventos del pedido | Query base ORDER#id / EVENT# | Fuerte; ascendente, cursor | GET /orders/{orderId}/events; seguimiento público |
+| AP05 Historial completo del comercio por creación | Query GSI1 STORE#id / ORDER# | Eventual; descendente, cursor/rango | GET /stores/me/orders sin status |
+| AP06 Pedidos de comercio por estado | Query GSI2 STORE#id#status / CREATED# | Eventual; descendente, cursor/rango | GET /stores/me/orders con status |
+| AP07 Historial de repartidor | Query GSI1 COURIER#id / ORDER# | Eventual; descendente por creación del pedido, cursor/rango | GET /couriers/me/orders |
+| AP08 Ofertas pendientes de zona | Query GSI2 ZONE#id#OPEN / CREATED# | Eventual; ascendente, cursor | GET /orders/available; zona validada contra perfil |
+| AP09 Asignación activa | GetItem COURIER#id / ACTIVE; después META si existe | Fuerte por lectura; sin snapshot conjunto | GET /couriers/me/active; guard de aceptación y suspensión |
+| AP10 Presencia reciente de zona | Redis ZRANGEBYSCORE + lectura de heartbeat con TTL | Efímera; orden por score/ID, cursor propio | GET /zones/{zoneId}/couriers |
+| AP11 Seguimiento por token | Resolver ID/hash contra META + credencial AP15 si existe + AP04 | Fuerte por operación; sin snapshot conjunto | GET /tracking/{token}; DTO mínimo |
+| AP12 Estadística mensual | Cache-Aside Redis; GetItem STORE#id / STATS#YYYY-MM en miss/fallo | Caché temporal; base fuerte | GET /stores/me/stats |
+| AP13 Bandeja administrativa por tipo/estado | Query GSI2 ADMIN#kind#estado / CREATED# + GetItem de cada perfil | Índice eventual y relectura fuerte; descendente, cursor | GET /admin/stores, /admin/couriers |
+| AP14 Auditoría de perfil | Query base PROFILE_AUDIT#kind#id / EVENT# | Fuerte; descendente, cursor | GET /admin/stores/{id}/events, /admin/couriers/{id}/events |
+| AP15 Credencial de seguimiento | GetItem ORDER#id / TRACKING | Fuerte; un ítem | TrackingAccess.for_order; geografía pública y validación de enlaces nuevos |
+| AP16 Resultado idempotente | GetItem REQUEST#actor:operation#requestId / IDEMPOTENCY | Fuerte; un ítem | run_command: antes de escribir y tras conflicto/reintento |
 
-IDs opacos no contienen el separador `#`. Fechas de claves: UTC con ancho fijo,
-por ejemplo `2026-11-10T21:15:05.000000Z`. Un ID como sufijo desempata fechas iguales.
-`entity_type`, `schema_version` y `version` identifican y versionan los registros.
-Las claves son responsabilidad de repositorios, no de consumidores de contratos.
+El detalle administrativo reutiliza AP01/AP02; para repartidor añade AP09. Las lecturas geográficas autenticadas usan AP03 y Redis; las públicas también validan AP15. Geometría/progreso se sirven desde el snapshot de ruta Redis o proveedor OSRM, no desde un nuevo índice DynamoDB.
 
-| Ítem / dueño | PK | SK | GSI1PK / GSI1SK | GSI2PK / GSI2SK |
-| --- | --- | --- | --- | --- |
-| Perfil / Identity | USER#user_id | PROFILE | — | — |
-| Comercio / Stores | STORE#store_id | PROFILE | — | — |
-| Repartidor / Couriers | COURIER#courier_id | PROFILE | — | — |
-| Pedido / Orders | ORDER#order_id | META | STORE#store_id / ORDER#created_at#order_id | OPEN#ZONE#zone_id / ORDER#created_at#order_id, solo OPEN |
-| Asignación / Dispatch | ORDER#order_id | ASSIGNMENT | COURIER#courier_id / ASSIGNMENT#accepted_at#order_id | — |
-| Última posición / Tracking | ORDER#order_id | TRACKING#LATEST | — | — |
-| Resultado idempotente / módulo del comando | IDEMPOTENCY#actor_id | OP#operation#key_digest | — | — |
-| Métrica diaria / Analytics | STORE#store_id | METRIC#date | — | — |
+AP11 admite tokens históricos sin TRACKING solo para estados; si existe una credencial expirada/revocada, el enlace se rechaza también para estado. Ubicación/ruta exige que TRACKING exista y que el pedido esté activo.
 
-`key_digest` es un hash de la clave idempotente; la huella del contenido se almacena
-separadamente. `operation` incluye nombre y versión (p. ej. orders.publish.v1).
-Solo se indexan los tipos indicados. Un pedido ASSIGNED conserva el GSI1 del comercio
-y elimina GSI2PK/GSI2SK para abandonar el índice disperso de ofertas abiertas.
-La asignación no duplica el ítem META en el GSI1: tiene su propio prefijo y propietario.
+## Cómo se implementa la Query
 
-No hay búsqueda global de usuarios, comercios o repartidores en esta propuesta.
-Los perfiles se consultan por ID. Un listado por propietario requerirá un patrón
-específico antes de añadirlo; no se resolverá recorriendo la tabla.
+`Repository.query` fija la partición desde el caso de uso y utiliza alias para claves; no obtiene el ámbito a partir de un cursor no confiable. Las condiciones son igualdad de partition key y begins_with de sort key, o BETWEEN con fechas normalizadas. No se usa FilterExpression en los accesos DynamoDB de la matriz.
 
-## Matriz de consultas
+Ejemplo de AP06:
 
-| Necesidad | Operación / condición | Consistencia |
-| --- | --- | --- |
-| Perfil por ID | GetItem con PK exacta y SK=PROFILE | Fuerte cuando valida actividad |
-| Detalle de pedido | GetItem ORDER#id / META | Fuerte para decisiones y recuperación |
-| Historial del comercio por fecha | Query GSI1: GSI1PK=STORE#id y begins_with(GSI1SK, ORDER#); ScanIndexForward=false | Eventual |
-| Ofertas abiertas de una zona | Query GSI2: GSI2PK=OPEN#ZONE#id y begins_with(GSI2SK, ORDER#) | Eventual |
-| Asignación de una entrega | GetItem ORDER#id / ASSIGNMENT | Fuerte para comprobar ganador |
-| Asignaciones del repartidor | Query GSI1: GSI1PK=COURIER#id y begins_with(GSI1SK, ASSIGNMENT#) | Eventual |
-| Resultado de un comando | GetItem IDEMPOTENCY#actor_id / OP#operation#key_digest | Fuerte |
-| Última posición de entrega | GetItem ORDER#id / TRACKING#LATEST | Según frescura requerida |
-| Métrica de comercio/día | GetItem STORE#id / METRIC#date | Proyección con retraso explícito |
-| Métricas de un rango de días | Query base: PK=STORE#id y SK BETWEEN METRIC#inicio AND METRIC#fin | Proyección con retraso explícito |
+```text
+IndexName = GSI2
+KeyConditionExpression = #pk = :pk AND begins_with(#sk, :prefix)
+ExpressionAttributeNames = {#pk: GSI2PK, #sk: GSI2SK}
+Valores conceptuales = {:pk: STORE#S01#ASSIGNED, :prefix: CREATED#}
+ScanIndexForward = false
+```
 
-Los listados devuelven `LastEvaluatedKey` como cursor opaco del contrato. Para rangos
-ordenados se usarán límites de sort key con el formato anterior. No se exige orden
-estable ante inserciones concurrentes entre páginas. Un GSI no soporta lecturas
-fuertemente consistentes; se revalida META al aceptar. Véase la
-[documentación de consistencia DynamoDB](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadConsistency.html).
+Un limit de 25 pide una página de hasta 25 ítems evaluados, no todos los resultados. Se sigue LastEvaluatedKey mediante nextCursor; una página vacía no obliga a terminar si hay cursor. La relectura de AP13 puede descartar perfiles cuyo estado ya cambió. El conjunto no queda congelado entre páginas.
 
-## Escrituras atómicas previstas
+## Permisos y consistencia
 
-Publicación: una transacción comprueba actividad/versión del comercio y crea META
-OPEN y el resultado idempotente, ambos con condición de ausencia. El order_id se
-genera una sola vez para el intento; un reintento recupera el resultado persistido.
-Si posteriormente se activa outbox, su ítem se incorpora al mismo commit.
+El repositorio implementa lectura física; la autorización pertenece al servicio/handler. Conocer `ORDER#id` o un cursor no concede acceso. El actor y su rol determinan el comercio, repartidor y zona autorizados; ADMIN no recibe acceso GPS por consultar un pedido.
 
-Aceptación: un único TransactWriteItems contiene:
+AP08 permite descubrir candidatos, pero aceptar siempre vuelve a validar META, versión del perfil y ausencia de ACTIVE en un commit. AP13 revalida estado para presentar filas actuales, pero una inserción puede tardar en aparecer. Las listas de pedidos no prometen una relectura fuerte de cada fila del GSI.
 
-1. ConditionCheck sobre perfil de repartidor habilitado y versión del snapshot.
-2. Update de ORDER#id / META, condicionado a existencia, status=OPEN y versión
-   esperada: escribe courier_id, accepted_at, incrementa version y elimina las claves GSI2.
-3. Put de ORDER#id / ASSIGNMENT, condicionado a ausencia, con las claves GSI1 del repartidor.
-4. Put del resultado idempotente, condicionado a ausencia, con huella y AssignmentView.
+## Accesos que no están implementados
 
-El campo courier_id del pedido y la asignación quedan confirmados juntos. Si dos
-repartidores compiten, solo uno puede cumplir OPEN y ausencia de asignación. La
-idempotencia se recupera mediante lectura fuerte tras conflictos o respuestas perdidas.
-Las condiciones del ítem META pertenecen al Update; no se agrega un ConditionCheck
-separado sobre ese mismo ítem, ya que DynamoDB lo prohíbe en la misma transacción.
-La transacción también comprueba versiones de perfiles para cerrar la carrera con
-una deshabilitación. Cada módulo construye su fragmento mediante los puertos internos
-explicados en [contratos](module-contracts.md).
+No hay búsqueda por nombre, consultas globales de todos los pedidos, auditoría por administrador, reporte arbitrario por tarifa ni selección de repartidor más cercano mediante índice geoespacial. Esos requisitos necesitarían sus propias claves/índices, vistas o proceso analítico. Las claves físicas no sustituyen ese análisis.
 
-Atomicidad e idempotencia siguen el contrato de
-[TransactWriteItems](https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_TransactWriteItems.html).
-El test actual comprueba commit/rollback del emulador; no reemplaza una prueba futura
-de concurrencia y recuperación del caso de uso.
+Scan existe en `scripts.backfill_approvals` por mantenimiento y en `scripts.benchmark` para comparar estrategias. No es una consulta operativa escondida detrás de los endpoints. Los datos de pruebas se limpian por sus claves conocidas; no se vacía la tabla compartida.
 
-## Presencia en Redis
+## Evidencias
 
-| Clave | Tipo | Propósito |
-| --- | --- | --- |
-| fd:presence:courier:id | String JSON con zone_id, last_seen y sesión | Heartbeat con TTL |
-| fd:presence:zone:id | Sorted Set, miembro courier_id y score last_seen | Candidatos vigentes por zona |
-
-Valores iniciales propuestos: heartbeat cada 15 segundos y vigencia de 60 segundos,
-configurables cuando se implemente. El servidor fija last_seen; no confía en el reloj
-del dispositivo. ZRANGEBYSCORE filtra por ventana vigente; no se interpreta la mera
-pertenencia al conjunto como prueba de conexión. El índice por zona no expira miembros
-individuales automáticamente: hay que eliminar scores antiguos y revalidar la clave
-con TTL y su zona actual. Cambio de zona, renovación y salida usarán una operación
-atómica Redis (Lua) para evitar sesiones cruzadas; esa compatibilidad se probará en
-su fase. Ninguna operación Redis forma parte del commit DynamoDB.
-
-## Límites y decisiones pendientes
-
-- Un índice de ofertas por zona puede concentrar tráfico; se empezará sin sharding.
-  Medir antes de dividir particiones y cambiar el contrato de paginación.
-- No hay máximo de entregas activas por repartidor ni reasignación. Si se requiere,
-  diseñar un guard persistente y sus transiciones antes de implementarlo.
-- No hay historial de ubicaciones de alta frecuencia. Definir frecuencia, retención
-  y patrones antes de añadir nuevos ítems; evitar crecimiento ilimitado de una entrega.
-- La retención de idempotencia, eventos y métricas requiere una decisión explícita.
-  No se habilita TTL ni se presupone que el emulador reproduce retrasos reales de índices.
-- Outbox todavía no tiene formato de clave ni índice: necesita un patrón de consumo,
-  recuperación y deduplicación antes de activarse. No añadir un barrido Scan periódico.
-- Direcciones y ubicaciones requieren control de acceso y minimización. Los DTOs
-  de listados y los eventos no transportan esos datos.
+- `tests/test_access_patterns.py` y `tests/integration/test_data_model.py`: accesos originales, índices, paginación y consistencia.
+- `tests/test_approvals.py` y `tests/integration/test_approvals_http.py`: AP13/AP14, cursor por ámbito, GSI obsoleto, permisos, auditoría y carreras de suspensión.
+- `tests/test_commands.py`, `tests/test_gps_tracking.py`, `tests/integration/test_geo_http_integration.py`: comandos, credenciales y seguimiento.
+- [Registro de validación](validation.md): conteos/fecha de las ejecuciones y limitaciones del emulador.

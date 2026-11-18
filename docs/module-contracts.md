@@ -1,140 +1,72 @@
-> Documento histórico de fase 1. Para el diseño vigente consultar [arquitectura general](ARQUITECTURA_GENERAL.md) y [especificaciones](specs/README.md). Sus diferencias no deben trasladarse a código sin reconciliación.
+# Contratos y dependencias entre módulos
 
-# Contratos entre módulos — diseño v1
+Revisión: 2026-11-18, implementación hasta SPEC-10. Este documento describe código existente; sustituye la propuesta de fase 1, disponible en Git. [Arquitectura de estudio](ARQUITECTURA_GENERAL.md), [OpenAPI](api/openapi.json), [modelo](data-model/README.md).
 
-Este documento define el siguiente incremento. Las firmas son contratos de diseño,
-no APIs ya implementadas. No se añaden endpoints, persistencia de negocio ni servicios.
-La infraestructura de fase 1 fue validada por el usuario en su terminal.
+## Convenciones reales
 
-## Convenciones
+Las llamadas de aplicación son funciones Python síncronas. Cada handler expone `main(event, context)` usando `shared.http.router`. El router interpreta el evento HTTP API v2, verifica la sesión en rutas protegidas, construye Request y traduce excepciones de dominio a JSON/HTTP. Las rutas públicas explícitas no confían en un rol enviado por el cliente.
 
-Las llamadas serán funciones Python síncronas dentro del monolito. Cada proveedor
-expondrá un archivo público `contracts.py` con DTOs inmutables y `Protocol` cuando
-se implemente su primer caso de uso. Los consumidores dependen de esos contratos,
-y la composición conecta implementaciones; no se importan repositorios ajenos.
-Los DTOs no exponen boto3, claves DynamoDB ni clientes Redis.
+`identity.contracts.ActorContext` es una dataclass inmutable con actor_id y role. store_id/courier_id se derivan del actor según su rol. `authorize(actor, *roles)` valida acceso de aplicación. No hay un archivo contracts.py por módulo ni un contenedor de inyección global; la mayoría de servicios reciben adapter/cache explícitos y llaman funciones/repositorios concretos.
 
-IDs son cadenas opacas generadas por el servidor; fechas UTC RFC 3339; coordenadas
-latitud [-90, 90] y longitud [-180, 180]. Cada operación recibe `RequestContext`
-con `request_id`, `actor_id` y `actor_kind` (STORE o COURIER). Un futuro adaptador de
-identidad construirá ese contexto; no se acepta identidad arbitraria del cuerpo HTTP.
-No se implementa autenticación en este incremento documental.
+El esquema físico y su serialización son internos. Los DTOs HTTP excluyen PK/SK, claves GSI, hashes y detalles de infraestructura. Las fechas son UTC; las claves se construyen en `shared.storage`. Los listados HTTP usan items/nextCursor; `Repository` usa Page(items, next_cursor). Request.page solo procesa limit/cursor: el soporte de rangos de fecha del repositorio no constituye un parámetro público de todas las rutas.
 
-Escrituras externas requieren `idempotency_key`, acotada por actor y operación.
-Consultas paginadas reciben `limit` entre 1 y 100 y cursor opaco; devuelven `items`
-y `next_cursor`. La implementación validará que el cursor corresponde a consulta y
-actor. La autorización se evalúa también para consultas y reintentos idempotentes.
+## Propiedad y colaboración
 
-## Responsabilidades y puertos públicos
-
-| Módulo proveedor | Contrato previsto | Resultado y consumidores |
+| Módulo / código de entrada | Funciones y responsabilidad | Colaboración efectiva |
 | --- | --- | --- |
-| identity | `resolve_actor(credentials) -> ActorContext` | Identidad verificada para la capa de entrada; detalle de credenciales pendiente |
-| stores | `get_store(store_id) -> StoreView`; `require_active_store(store_id, actor) -> StoreSnapshot` | Orders verifica pertenencia y actividad al publicar |
-| couriers | `get_courier(courier_id) -> CourierView`; `require_active_courier(courier_id, actor) -> CourierSnapshot` | Dispatch valida pertenencia y habilitación al aceptar |
-| orders | `publish_order(context, PublishOrder) -> OrderView` | Publica solicitud de entrega del comercio |
-| orders | `get_order(context, order_id) -> OrderView`; `list_store_orders(context, store_id, page) -> Page[OrderSummary]` | Consulta autorizada por comercio, o repartidor asignado para el detalle |
-| orders | `list_open_orders(context, zone_id, page) -> Page[OrderSummary]` | Ofertas para repartidores; listados eventualmente consistentes |
-| dispatch | `accept_order(context, AcceptOrder) -> AssignmentView`; `get_assignment(context, order_id) -> AssignmentView` | Única puerta de aceptación, consulta autorizada por participantes |
-| availability | `heartbeat(context, Heartbeat) -> AvailabilityView`; `go_offline(context) -> None`; `list_available_couriers(zone_id, page) -> Page[CourierPresence]` | Presencia orientativa para Dispatch; no decide la unicidad de aceptación |
-| tracking | `record_location(context, LocationUpdate) -> TrackingView`; `get_latest_location(context, order_id) -> TrackingView` | Solo el repartidor asignado escribe; participantes leen |
-| analytics | `consume(event) -> None`; `get_store_daily_metrics(context, store_id, date) -> MetricsView` | Proyección futura, sin consultas Scan sobre pedidos |
+| Identity / handler.py, contracts.py, tokens.py | dev_login, me, ActorContext, authorize; emitir/verificar sesión de desarrollo | Configuración y primitivas de validación; no tabla USER |
+| Stores / service.py | register_store, get_my_store, set_store_enabled; zonas y nombre del perfil | StoresRepository; decisión administrativa delegada a Approvals |
+| Couriers / service.py | register_courier, get_my_courier, set_availability, get_active_order, list_my_orders, set_courier_enabled | CouriersRepository; Orders para activo; Approvals para decisiones |
+| Orders / service.py | create_order, get_order, list_store_orders, list_open_orders, list_events, build_transition | StoresRepository para elegibilidad; Tracking para credencial/puntos; shared.run_command |
+| Dispatch / service.py | accept_order, pick_up_order, deliver_order, cancel_order, fail_order | build_transition/load_order de Orders; repositorios Couriers/Analytics; un commit común |
+| Availability / service.py | heartbeat, leave, list_present, go_offline | Lecturas de perfil mediante servicios Stores/Couriers; Redis TTL/ZSET |
+| Tracking / handler.py y auxiliares | Publicar/leer/parar ubicación, revocar token, seguimiento público, get_route | OrdersRepository, TrackingAccess, RedisLocationStore, proveedor OSRM |
+| Analytics / service.py, repository.py | get_month_stats, invalidate_month; agregado mensual con build_increment | DynamoDB fuente oficial; Redis Cache-Aside; Dispatch compone incremento |
+| Approvals / service.py | listing, detail, events, change | Repositorios Stores/Couriers; ApprovalsRepository para auditoría; guard ACTIVE |
+| shared | HTTP, errores, reloj, ajustes, clientes, claves/modelo/repositorio/transacciones | Primitivas técnicas; no coordina reglas de asignación o aprobación |
 
-`StoreView`: store_id, owner_id, active, zone_id. `CourierView`: courier_id,
-owner_id, active. Los snapshots agregan `version` para detectar cambios concurrentes.
-`PublishOrder`: store_id, pickup_address, dropoff_address, zone_id, idempotency_key.
-Las direcciones y la zona serán validadas; el servidor toma la zona operativa del
-comercio y rechaza discrepancias. Tarifas, cobros y geocodificación quedan pendientes.
-`OrderView`: order_id, store_id, zone_id, status, created_at, version y, tras aceptar,
-courier_id. El DTO público mínimo no expone datos personales del destino en listados.
-`AcceptOrder`: order_id, courier_id, idempotency_key.
-`AssignmentView`: order_id, courier_id, accepted_at, assignment_id.
-`Heartbeat`: zone_id; courier_id se obtiene del contexto y del perfil.
-`LocationUpdate`: order_id, latitude, longitude, observed_at, sequence_number,
-idempotency_key. Tracking exige una secuencia creciente por entrega/repartidor.
+Stores/Couriers siguen siendo las Lambdas de los PATCH administrativos por compatibilidad. Approvals expone seis GET y comparte la lógica de transición de perfil. Cada tipo de ítem se valida contra el conjunto permitido por su repositorio al construir Put; no es aislamiento IAM entre entidades de la tabla.
 
-Los módulos de identidad, perfiles y tracking tienen aquí solo contratos de lectura
-o comandos necesarios para expresar interacciones; sus CRUD completos no están definidos.
+## Frontera de una transacción
 
-## Propiedad de datos y coordinación
+Un constructor de repositorio como `build_put`, `build_eligible_condition`, `build_release_active` o `build_increment` devuelve una acción DynamoDB. **Construirla no escribe nada.** El caso de uso combina pares `(acción, error de condición)` y llama a commit/run_command. Así una operación de negocio no se divide en varios commits ocultos de módulos distintos.
 
-Orders es propietario del estado del pedido. Dispatch es propietario del registro
-de asignación. Availability es propietario de la presencia Redis. Tracking escribe
-sus propios registros; Analytics escribe sus proyecciones. Compartir tabla no permite
-leer ni escribir datos ajenos fuera de un puerto público.
+`Orders.build_transition` devuelve nuevo META y acciones para META, evento y STORE_STATUS_VIEW. Dispatch agrega ACTIVE, vista de repartidor y agregado cuando corresponda. La versión esperada está en la misma acción que sustituye el ítem. No se añade ConditionCheck separado sobre ese mismo ítem.
 
-La aceptación necesita una transacción que atraviesa Orders y Dispatch. Para ello,
-Orders expondrá un puerto interno explícito al coordinador de Dispatch:
-`prepare_acceptance(order_id, courier_id, expected_version, accepted_at) -> AtomicChange`.
-Este puerto construye el cambio condicional del pedido, pero no lo confirma. El
-coordinador agrega la asignación y el resultado idempotente y realiza un único commit
-mediante un `UnitOfWork` técnico. La implementación de `AtomicChange` pertenece a
-infraestructura y queda fuera del DTO de negocio. Solo estos puertos autorizan la
-participación en una transacción común; no se comparten repositorios.
+`run_command` añade un IDEMPOTENCY al commit y consulta su resultado ante replay/conflicto. `commit` se usa para mutaciones sin ese registro, como alta de perfiles y aprobaciones. Ni Redis, OSRM ni una llamada HTTP de un proveedor forman parte del commit DynamoDB.
 
-Stores y Couriers ofrecerán, al implementar el flujo, comprobaciones transaccionales
-sobre actividad y versión de sus snapshots. De este modo una deshabilitación concurrente
-no queda protegida únicamente por una lectura previa. El coordinador no interpreta
-sus claves. Estas comprobaciones pertenecen al mismo commit que publicación/aceptación.
+Esta es coordinación modular mediante implementaciones compartidas, no independencia estricta de repositorios. Una futura extracción de microservicios exigiría rediseñar esos límites y sus garantías. No está implementada una saga, outbox, bus de eventos ni consumidor Analytics asíncrono.
 
-## Estados y aceptación
+## DTOs y permisos principales
 
-Para el primer incremento funcional se proponen únicamente `OPEN` y `ASSIGNED`:
-publicar crea OPEN; aceptar cambia OPEN a ASSIGNED. No se implementan cancelación,
-recogida, entrega completada ni reasignación todavía. No se asume un máximo de una
-entrega activa por repartidor: esa regla requiere una decisión de producto adicional.
-
-La presencia por zona ayuda a descubrir disponibilidad y puede expirar en cualquier
-momento. El primer flujo no usará Redis como condición atómica de aceptación; verifica
-identidad y habilitación persistente. Si se exige presencia vigente al aceptar, habrá
-que precisar su semántica ante desconexiones antes de implementar esa restricción.
-
-La garantía requerida es un único repartidor por entrega. Se protege en DynamoDB
-condicionando el cambio del pedido a OPEN y la creación de asignación a su ausencia.
-Ni un resultado GSI ni un lock Redis conceden la asignación. Un pedido listado podría
-haber sido aceptado; la operación devuelve un conflicto de dominio si pierde la carrera.
-
-## Errores e idempotencia
-
-| Código estable | Significado | Reintento |
+| Respuesta | Contenido | Límite |
 | --- | --- | --- |
-| INVALID_INPUT | DTO inválido o clave idempotente ausente | Corregir entrada |
-| FORBIDDEN | Actor sin acceso o perfil inactivo | No automático |
-| NOT_FOUND | Recurso inexistente o no visible para ese actor | No automático |
-| ORDER_NOT_OPEN | Otro intento cambió el estado del pedido | No automático |
-| IDEMPOTENCY_CONFLICT | Misma clave con contenido distinto | Usar intención/clave correcta |
-| STALE_LOCATION | Secuencia igual o anterior a la ya registrada | No sobrescribir |
-| DEPENDENCY_UNAVAILABLE | DynamoDB/Redis no disponible | Reintentar con la misma clave |
+| Perfil propio | ID, nombre, zona, enabled, approvalStatus, fechas/version; available en repartidor | Nunca ownerId/claves físicas |
+| Pedido resumido | ID, comercio/zona, estado/fechas/version; recogida/tarifa y courierId si están presentes en el ítem leído | No dirección de destino ni puntos geográficos |
+| Detalle de pedido | Resumen + dirección de destino y pickupLocation/dropoffLocation si existen | Comercio propietario, repartidor asignado o ADMIN |
+| Historial repartidor | Campos de su vista: orderId/storeId/courierId/estado/fechas/version | No copia direcciones o tarifa desde otro ítem |
+| Seguimiento público | orderId, status, updatedAt, eventos mínimos, nextCursor | Token validado; sin identidades/direcciones |
+| Última ubicación | Estado, updatedAt, location o null, frescura | Propietario/asignado o token geográfico válido; ADMIN excluido |
+| Ruta pública | Geometría/progreso/distancia/ETA/fase/versiones públicas | Sin identidades, direcciones ni anotaciones internas |
+| Perfil administrativo | Datos mínimos de perfil; activeOrderId en detalle de repartidor | Solo ADMIN; el listado no expone GPS |
+| Auditoría de perfil | actorId, occurredAt, fromStatus/toStatus, reason, profileVersion e IDs del evento/perfil | Solo ADMIN; no reconstrucción retroactiva |
+| Estadística | Comercio/mes, entregas, importe, updatedAt y source | STORE propio; source indica cache o dynamodb |
 
-Idempotencia usa una huella canónica de los campos de negocio, sin request_id ni
-hora generada. El resultado y la huella se guardan en la misma transacción de la
-operación. Mismo actor/operación/clave y misma huella devuelven el resultado previo;
-contenido distinto produce IDEMPOTENCY_CONFLICT. La consulta de ese registro se hace
-antes de interpretar una condición fallida como ORDER_NOT_OPEN y después de un timeout.
-Una falla técnica no se convierte automáticamente en conflicto de negocio.
+El detalle exacto de campos requeridos/opcionales está en OpenAPI; las vistas de índices no tienen necesariamente los mismos atributos que META. Una proyección ALL no autoriza devolver todo el ítem.
 
-El contrato propuesto conserva registros idempotentes durante la etapa inicial sin
-TTL: el periodo de retención se definirá antes de eliminarlos. No se confía únicamente
-en la ventana temporal de ClientRequestToken de DynamoDB.
+## Reintentos y errores
 
-## Eventos futuros
+- Comandos Orders/Dispatch: Idempotency-Key estable; misma huella recupera operación, otro contenido devuelve 409 IDEMPOTENCY_CONFLICT.
+- Perfil/disponibilidad: sin clave idempotente obligatoria; escritura condicional/naturaleza repetible. PATCH administrativo acepta expectedVersion/reason opcionales por compatibilidad; la bandeja los exige.
+- Misma decisión administrativa ya aplicada: no-op incluso si la versión del cliente es antigua; otro cambio con versión antigua: 409 PROFILE_CHANGED.
+- Suspensión de repartidor con ACTIVE: 409 COURIER_HAS_ACTIVE_ORDER, sin modificación de perfil ni evento.
+- Ubicación: control de timestamp/secuencia y frecuencia en Lua; no crea IDEMPOTENCY por cada muestra.
+- Error técnico: el cliente no debe interpretar un timeout como ausencia de commit. Los logs/errores contienen requestId; no deben revelar credenciales/direcciones/coordenadas.
 
-Envelope v1: event_id, event_type, schema_version=1, occurred_at, aggregate_id,
-aggregate_version, correlation_id y payload mínimo. Eventos previstos: OrderPublished
-(order_id, store_id, zone_id) y OrderAccepted (order_id, store_id, courier_id).
-No incluyen direcciones ni coordenadas. Analytics deduplica por event_id.
+Las claves de intención pendientes se conservan en frontend para recuperación al reenviar; no existe reenvío offline automático. Los servicios reconstruyen algunas respuestas con lectura actual del pedido: idempotencia no garantiza un JSON congelado de su estado inicial.
 
-La futura entrega será al menos una vez, con consumidores idempotentes. No se ofrece
-exactly once ni orden global. Para no perder eventos entre commit y publicación,
-se propone outbox transaccional en la misma tabla. El mecanismo de extracción y
-reintento se diseñará antes de activar Analytics; no se añaden colas ni workers ahora.
+## Puertos realmente utilizados y pruebas
 
-## Secuencia recomendada de implementación
+Tracking declara protocolos para la lectura de pedidos y almacenamiento de la última ubicación; RedisLocationStore y el proveedor de rutas son adaptadores concretos reemplazables en pruebas. shared.DynamoDBAdapter acepta un cliente inyectado. El reloj e IDs pueden sustituirse mediante fixtures/monkeypatch.
 
-1. DTOs, errores y protocolos del primer flujo; prueba de límites de importación.
-2. Perfiles mínimos de comercio/repartidor y contexto local explícito de pruebas.
-3. Publicación e idempotencia, con repositorio Orders y prueba de Query.
-4. Aceptación atómica e idempotente; prueba concurrente de varios repartidores y
-   recuperación tras respuesta perdida. Un ganador y ningún registro parcial.
-5. Presencia Redis y tracking, cuando se definan transiciones posteriores.
-6. Outbox y Analytics cuando exista mecanismo de entrega y recuperación verificable.
+Los fixtures comunes moto/fakeredis prueban servicios sin red; tests de contrato comparan OpenAPI, registro de rutas y handlers. Las integraciones prueban el paquete desplegado y conservan los escenarios reales de concurrencia. No se acredita una política universal de imports solo por llamar a esta arquitectura «hexagonal»; el límite concreto se comprueba leyendo estas colaboraciones.

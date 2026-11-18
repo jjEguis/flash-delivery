@@ -2,11 +2,13 @@
 
 Aplicación de entregas de última milla con DynamoDB (tabla única), Redis, Python, Lambda y API Gateway, ejecutada localmente sobre MiniStack. Los comercios publican pedidos, los repartidores de la zona compiten por aceptarlos y una transacción condicional garantiza que solo uno gane. El destinatario sigue su pedido con un enlace seguro.
 
-Estado: SPEC-00 a SPEC-09 fusionadas; SPEC-10 implementada y pendiente revisión, con API HTTP (40 operaciones de módulos), interfaz web con reintentos, paginación y ubicación opcional, rutas OSRM locales y ETA durante entregas activas, y pruebas de backend y navegador. SPEC-09 añade la demo guiada de registro, aprobación y ambos recorridos. Consultar [especificaciones](docs/specs/README.md) y [validación](docs/validation.md).
+Estado: **SPEC-00 a SPEC-10 fusionadas**. API con 40 operaciones de módulos, interfaz unificada, aprobaciones auditadas, pedidos transaccionales y seguimiento vial local. SPEC-11 actualiza documentación y la guía de estudio.
+
+Para estudiar: **[Documento general de arquitectura](docs/ARQUITECTURA_GENERAL.md)** → [modelo single table](docs/data-model/README.md) → [patrones AP01–AP16](docs/data-access-patterns.md) → [contratos](docs/module-contracts.md). El documento general explica por qué la primary key es `(PK, SK)`, la razón de cada clave e índice, y las garantías con ejemplos. [Índice completo de documentación](docs/README.md).
 
 ```text
 flash-delivery/
-├── docker-compose.yml            # cdk-dev, MiniStack, Redis y web
+├── docker-compose.yml            # cdk-dev, MiniStack, Redis, OSRM y web
 ├── Dockerfile
 ├── .env.example
 ├── app/
@@ -18,6 +20,7 @@ flash-delivery/
 │   │   ├── dispatch/             # aceptar, recoger, entregar, cancelar, FAILED
 │   │   ├── availability/         # presencia en Redis (heartbeat + ZSET)
 │   │   ├── tracking/             # seguimiento público por token
+│   │   ├── approvals/            # bandejas, detalle y auditoría administrativa
 │   │   ├── analytics/            # estadística mensual con Cache-Aside
 │   │   └── shared/               # HTTP, errores, almacenamiento, transacciones
 │   ├── tests/                    # unitarios moto/fakeredis
@@ -27,7 +30,7 @@ flash-delivery/
 └── frontend/                     # SPA funcional, diseño React, GPS y proxy
 ```
 
-Cada módulo de `app/lambdas/<módulo>/` contiene su repositorio, su servicio de aplicación y un `handler.py` con `main(event, context)`, que se despliega como una Lambda propia.
+Los módulos HTTP se despliegan como Lambdas con `handler.py` y `main(event, context)`. Los módulos de negocio incluyen servicios/repositorios según su necesidad; Identity mantiene sus contratos y tokens. [Colaboración real entre módulos](docs/module-contracts.md).
 
 ## Inicio rápido
 
@@ -50,7 +53,7 @@ Abre http://127.0.0.1:8080 y entra como:
 | --- | --- | --- |
 | Comercio | `tienda_demo` | Publicar pedidos, verlos por estado, cancelar, compartir el enlace de seguimiento, ver estadísticas y repartidores conectados |
 | Repartidor | `rep_demo1`, `rep_demo2`, `rep_demo3` | Conectarse, aceptar pedidos de la zona, recogerlos y entregarlos |
-| Administración | `admin`, código `admin-local` | Habilitar comercios y repartidores, consultar pedidos, marcar FAILED |
+| Administración | `admin`, código `admin-local` | Revisar/aprobar/suspender perfiles, consultar auditoría/pedidos y marcar FAILED |
 
 Cualquier otro usuario puede registrarse como comercio o repartidor; queda pendiente hasta que un administrador lo habilite. El inicio de sesión es un adaptador de desarrollo con tokens HMAC, no apto para producción. Para ver la competencia entre repartidores, abre dos navegadores (o uno en modo incógnito) con repartidores distintos y acepta el mismo pedido.
 
@@ -67,7 +70,7 @@ curl -s -X POST localhost:8080/api/v1/orders -H "Authorization: Bearer $TOKEN" -
   -H 'Content-Type: application/json' -d '{"pickupAddress":"Calle 1","dropoffAddress":"Calle 2","feeMinor":8000}'
 ```
 
-- Las escrituras de negocio exigen `Idempotency-Key`: repetirla con el mismo cuerpo devuelve el mismo resultado; con otro cuerpo responde 409 `IDEMPOTENCY_CONFLICT`.
+- Crear y transicionar pedidos exige `Idempotency-Key`: repetir la intención no duplica efectos; con otro contenido responde 409 `IDEMPOTENCY_CONFLICT`. Perfiles/disponibilidad y ubicación tienen mecanismos propios; consultar OpenAPI. El replay puede responder con el estado actual del pedido.
 - Errores: `{"error": {"code", "message", "requestId"}}` con 400/401/403/404/409/429/500/503.
 - Listados paginados con `limit` (1–100) y `nextCursor` opaco.
 
@@ -107,7 +110,7 @@ Carga pedidos sintéticos y mide los patrones de acceso frente a un Scan, la cac
 
 ## Modelo de datos
 
-Tabla `FlashDeliveryTable` con `PK`/`SK` y dos GSI dispersos; doce patrones de acceso (AP01–AP12) resueltos con GetItem o Query, sin Scan. Detalle en [modelo de datos](docs/data-model/README.md) y [arquitectura](docs/ARQUITECTURA_GENERAL.md).
+Tabla `FlashDeliveryTable` con `PK`/`SK` y dos GSI dispersos; once tipos de ítem y patrones AP01–AP16 documentados. Los accesos operativos DynamoDB usan GetItem/Query; presencia y caché también usan Redis. Scan queda para mantenimiento explícito y benchmark. Detalle en [modelo de datos](docs/data-model/README.md) y [arquitectura](docs/ARQUITECTURA_GENERAL.md).
 
 ```bash
 docker compose exec -T cdk-dev python -m scripts.seed_data --namespace SEED_demo          # datos sintéticos
@@ -123,7 +126,7 @@ Documentación: [arquitectura](docs/ARQUITECTURA_GENERAL.md), [entorno y tests](
 
 ## Prototipo del nuevo diseño
 
-FE-00/FE-01 de diseño v2.1 están disponibles para revisión visual con datos simulados. Desde `frontend/`: `npm ci` y `npm run dev:preview` (Node 22.12+). Abrir http://127.0.0.1:5173/preview.html. Incluye comercio, repartidor, seguimiento, claro/oscuro y estados de ejemplo. [Guía y capturas](docs/frontend/FE-01-REVISION.md). La integración de este diseño con la API está pendiente.
+FE-00/FE-01 de diseño v2.1 están disponibles para revisión visual con datos simulados. Desde `frontend/`: `npm ci` y `npm run dev:preview` (Node 22.12+). Abrir http://127.0.0.1:5173/preview.html. Incluye comercio, repartidor, seguimiento, claro/oscuro y estados de ejemplo. [Guía y capturas](docs/frontend/FE-01-REVISION.md). La aplicación principal ya integra este diseño con la API; preview.html conserva el prototipo como referencia.
 
 ## Ubicación, rutas y ETA (SPEC-08 v2)
 

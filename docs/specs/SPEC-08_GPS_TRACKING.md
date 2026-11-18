@@ -1,5 +1,7 @@
 # SPEC-08 — Geolocalización y seguimiento de entregas
 
+> Especificación histórica de GPS v1, ampliada por [SPEC-08 vial v2](SPEC-08_LIVE_DELIVERY_TRACKING_v2.md). Las muestras de movimiento siguen en Redis; los puntos estáticos opcionales del pedido sí están en DynamoDB. Leaflet fue sustituido por MapLibre. [Estado vigente](../geo/README.md).
+
 **Proyecto:** FlashDelivery  
 **Estado:** Base v1 fusionada; alcance ampliado y sustituido por [SPEC-08 v2](SPEC-08_LIVE_DELIVERY_TRACKING_v2.md)
 **Prioridad:** Opcional después del flujo de entregas  

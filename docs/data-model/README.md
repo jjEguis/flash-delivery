@@ -1,108 +1,118 @@
-# Modelo de persistencia — SPEC-01
+# Modelo físico vigente — DynamoDB y Redis
 
-Tabla `FlashDeliveryTable`, claves String `PK`/`SK`, índices dispersos `GSI1PK`/`GSI1SK` y `GSI2PK`/`GSI2SK`, proyección ALL. DynamoDB es el estado oficial; la presencia Redis es temporal. No se implementan endpoints ni decisiones de negocio de asignación en esta SPEC.
+Revisión: 2026-11-18, implementación hasta SPEC-10. La [guía general](../ARQUITECTURA_GENERAL.md) explica los motivos y ejemplos paso a paso; este documento fija el contrato de almacenamiento. La [matriz AP01–AP16](../data-access-patterns.md) identifica consultas y consumidores. Fuente ejecutable: [model.py](../../app/lambdas/shared/storage/model.py), [keys.py](../../app/lambdas/shared/storage/keys.py), [repositorios](../../app/lambdas/).
 
-## Catálogo y convenciones
+## Tabla, tipos y convenciones
 
-[Ejemplos JSON](catalogo-items.json): un ítem por tipo y un segundo ORDER para mostrar la diferencia PENDING/ASSIGNED. Son datos sintéticos, no respuestas HTTP. Los registros oficiales se construyen con funciones de los módulos y se validan antes de generar escrituras.
+`FlashDeliveryTable`: primary key compuesta por `PK` (partition key String) y `SK` (sort key String). GSI1 usa GSI1PK/GSI1SK y GSI2 usa GSI2PK/GSI2SK, todos String, proyección ALL y facturación PAY_PER_REQUEST. No hay LSI ni TTL DynamoDB configurados. El nombre de tabla puede configurarse; el anterior es el valor del proyecto.
 
-Todos los ítems requieren `entityType`, `schemaVersion=1`, `version` entero positivo, PK y SK. No se aceptan atributos fuera del esquema. Las proyecciones replican la versión y estado del pedido. Las fechas se normalizan a UTC con seis decimales: `2026-01-01T00:01:00.000000Z`; de ese modo las claves se ordenan por tiempo. Un ID ASCII de 1–128 caracteres admite letras, números, guion y guion bajo; no admite separadores `#`, `.` ni caracteres Unicode.
+Cada ítem requiere PK, SK, `entityType`, `schemaVersion=1` y `version` entero positivo. Hay **11 tipos de ítem**. Las vistas de pedido copian estado/versión de META; eventos, ACTIVE, credenciales e intenciones tienen su propia versión. No se permiten atributos fuera del esquema validado.
 
-| Tipo / propietario | Campos obligatorios además de los comunes | Opcionales | PK / SK |
+| Tipo | Atributos de negocio obligatorios además de los comunes | Opcionales |
+| --- | --- | --- |
+| STORE | storeId, ownerId, zoneId, name, enabled, createdAt, updatedAt | approvalStatus; las altas nuevas lo incluyen |
+| COURIER | courierId, ownerId, zoneId, name, enabled, available, createdAt, updatedAt | approvalStatus; las altas nuevas lo incluyen |
+| ORDER | orderId, storeId, zoneId, status, createdAt, updatedAt, pickupAddress, dropoffAddress, feeMinor, currency, trackingTokenHash | courierId según estado; pickupCoordinates y dropoffCoordinates juntos |
+| ORDER_EVENT | orderId, eventId, eventType, occurredAt | Ninguno |
+| ACTIVE_ASSIGNMENT | courierId, orderId, assignedAt | Ninguno |
+| COURIER_ORDER_VIEW | courierId, orderId, storeId, status, createdAt, updatedAt | Ninguno |
+| STORE_STATUS_VIEW | storeId, orderId, status, createdAt, updatedAt | Ninguno |
+| STORE_STATS | storeId, month, deliveredCount, totalFeeMinor, updatedAt | Ninguno |
+| IDEMPOTENCY | scope, requestId, payloadHash, result, createdAt | Ninguno |
+| TRACKING_ACCESS | orderId, nonce, expiresAt, revoked | Ninguno |
+| PROFILE_AUDIT | profileKind, profileId, eventId, actorId, occurredAt, fromStatus, toStatus, profileVersion, reason | Ninguno |
+
+`version` de PROFILE_AUDIT no es `profileVersion`: el primero identifica la versión del evento; el segundo, la versión del perfil tras la decisión. Una revocación modifica `revoked` sin incrementar las versiones del pedido; no todos los cambios técnicos incrementan el atributo version.
+
+### Validación de valores
+
+- IDs: 1–128 caracteres ASCII, letras/números/guion/guion bajo, sin `#` ni `.`. Los IDs generados por `clock.new_id` combinan prefijo, milisegundos hexadecimales y aleatoriedad; no son ULID/UUID estándar. Las pruebas también usan UUID para namespaces aislados.
+- Fechas: UTC con seis decimales y Z, por ejemplo `2026-11-18T15:00:00.000000Z`. `updatedAt` no precede a createdAt. Mes: YYYY-MM válido.
+- Booleanos estrictos; números monetarios y contadores enteros no negativos en almacenamiento. La API exige feeMinor positivo y acotado. `currency`: tres letras mayúsculas; la aplicación usa COP. No convertir importes a float.
+- JSON sin float/binarios; enteros hasta 38 dígitos, profundidad hasta 32 niveles. El límite local de 400 KiB usa una estimación conservadora sobre JSON AttributeValue, no el cálculo exacto de bytes facturables del motor.
+- Estado de pedido: PENDING, ASSIGNED, PICKED_UP, DELIVERED, CANCELLED, FAILED. ASSIGNED/PICKED_UP/DELIVERED/FAILED requieren courierId; PENDING lo prohíbe. CANCELLED puede conservarlo si hubo asignación.
+- Coordenadas estáticas: mapas `{latitudeE6, longitudeE6}` de enteros; ambos puntos presentes o ambos ausentes. No hay muestras de movimiento DynamoDB. Validación de cobertura y entrada decimal: capa Tracking/Orders.
+- Perfil: approvalStatus en PENDING/ENABLED/SUSPENDED; compatible con enabled. Perfil habilitado implica ENABLED. Un perfil suspendido tiene enabled=false; suspender repartidor fuerza available=false.
+- Auditoría: profileKind STORE/COURIER, profileVersion al menos 2 y motivo de 1–300 caracteres tras quitar espacios exteriores. Retención indefinida en la demo.
+- TRACKING_ACCESS: nonce base64url de 43 caracteres, expiresAt epoch positivo, revoked booleano. El token público se deriva con HMAC; META guarda SHA-256 del secreto, no el enlace completo.
+
+## Claves base: localización y motivo
+
+| Tipo | PK | SK | Razón del formato |
 | --- | --- | --- | --- |
-| STORE / Stores | storeId, ownerId, zoneId, name, enabled, createdAt, updatedAt | approvalStatus | STORE#id / PROFILE |
-| COURIER / Couriers | courierId, ownerId, zoneId, name, enabled, available, createdAt, updatedAt | approvalStatus | COURIER#id / PROFILE |
-| ORDER / Orders | orderId, storeId, zoneId, status, createdAt, updatedAt, pickupAddress, dropoffAddress, feeMinor, currency, trackingTokenHash | courierId; obligatorio en ASSIGNED/PICKED_UP/DELIVERED/FAILED y ausente en PENDING | ORDER#id / META |
-| PROFILE_AUDIT / Approvals | profileKind, profileId, eventId, actorId, occurredAt, fromStatus, toStatus, profileVersion, reason | Ninguno | PROFILE_AUDIT#kind#id / EVENT#timestamp#eventId |
-| ORDER_EVENT / Orders | orderId, eventId, eventType, occurredAt | Ninguno | ORDER#id / EVENT#timestamp#eventId |
-| ACTIVE_ASSIGNMENT / Couriers | courierId, orderId, assignedAt | Ninguno | COURIER#id / ACTIVE |
-| COURIER_ORDER_VIEW / Couriers | courierId, orderId, storeId, status, createdAt, updatedAt | Ninguno | COURIER#id / ORDER#id |
-| STORE_STATUS_VIEW / Orders | storeId, orderId, status, createdAt, updatedAt | Ninguno | STORE#id / STATUS#orderId |
-| STORE_STATS / Analytics | storeId, month, deliveredCount, totalFeeMinor, updatedAt | Ninguno | STORE#id / STATS#YYYY-MM |
-| IDEMPOTENCY / infraestructura del comando | scope, requestId, payloadHash, result (objeto), createdAt | Ninguno | REQUEST#scope#requestId / IDEMPOTENCY |
+| STORE | STORE#storeId | PROFILE | Un perfil por comercio, lectura directa |
+| COURIER | COURIER#courierId | PROFILE | Perfil único independiente de su estado |
+| ORDER | ORDER#orderId | META | Estado oficial consultable por ID desde distintos actores |
+| ORDER_EVENT | ORDER#orderId | EVENT#occurredAt#eventId | Colección temporal de eventos de una entrega |
+| ACTIVE_ASSIGNMENT | COURIER#courierId | ACTIVE | Clave fija compartida por todos los intentos de aceptar del repartidor |
+| COURIER_ORDER_VIEW | COURIER#courierId | ORDER#orderId | Vista estable del historial de ese repartidor |
+| STORE_STATUS_VIEW | STORE#storeId | STATUS#orderId | Vista estable aunque cambie su estado |
+| STORE_STATS | STORE#storeId | STATS#YYYY-MM | Un agregado por comercio y mes |
+| IDEMPOTENCY | REQUEST#scope#requestId | IDEMPOTENCY | Una intención por actor/operación/clave |
+| TRACKING_ACCESS | ORDER#orderId | TRACKING | Revocar/expirar credencial sin cambiar META/vistas |
+| PROFILE_AUDIT | PROFILE_AUDIT#profileKind#profileId | EVENT#occurredAt#eventId | Decisiones de un perfil, independientes del administrador que actuó |
 
-Direcciones son texto no vacío en este contrato de almacenamiento; la API detallará su validación en SPEC-03. `feeMinor`, `totalFeeMinor` y `deliveredCount` son enteros no negativos; moneda son tres letras mayúsculas. `enabled`/`available` son booleanos estrictos. Los hashes son SHA-256 hexadecimal. `updatedAt` no puede preceder a `createdAt`. No se permite float: la serialización usa enteros, booleanos, texto, listas, objetos y null. Se acotan números a 38 dígitos y anidamiento a 32 niveles.
+`scope=actorId:operacion.version`, por ejemplo `S01:orders.create.v1` para un actor sintético; las operaciones reales se asignan según su rol. `requestId` del ítem es la Idempotency-Key recibida, no el identificador de trazabilidad HTTP. Los separadores se introducen solo en las funciones de claves.
 
-Los atributos GSI son obligatorios únicamente para las variantes que participan en el índice:
+El par PK/SK es único en la tabla. Un `attribute_not_exists(PK)` evaluado sobre el ítem al que apunta la escritura compuesta comprueba su ausencia; no prohíbe otros ítems con esa PK y otra SK.
+
+## Índices dispersos compartidos
 
 | Ítem | GSI1PK / GSI1SK | GSI2PK / GSI2SK |
 | --- | --- | --- |
-| ORDER, cualquier estado | STORE#storeId / ORDER#createdAt#orderId | Solo PENDING: ZONE#zoneId#OPEN / CREATED#createdAt#orderId |
+| ORDER, todo estado | STORE#storeId / ORDER#createdAt#orderId | Solo PENDING: ZONE#zoneId#OPEN / CREATED#createdAt#orderId |
 | COURIER_ORDER_VIEW | COURIER#courierId / ORDER#createdAt#orderId | Ausentes |
 | STORE_STATUS_VIEW | Ausentes | STORE#storeId#status / CREATED#createdAt#orderId |
-| STORE/COURIER PROFILE | Ausentes | ADMIN#STORE o COURIER#approvalStatus / CREATED#createdAt#id |
-| Otros tipos | Ausentes | Ausentes |
+| STORE | Ausentes | ADMIN#STORE#approvalStatus / CREATED#createdAt#storeId |
+| COURIER | Ausentes | ADMIN#COURIER#approvalStatus / CREATED#createdAt#courierId |
+| Los otros seis tipos | Ausentes | Ausentes |
 
-No se conserva un atributo de índice como null: ambos atributos se omiten cuando no aplican. Sustituir el registro oficial de PENDING por otro estado retira las claves GSI2 de zona; su vista de comercio conserva GSI2 con la nueva partición de estado. GSI1 del pedido permanece para el historial del comercio y el de la vista courier conserva el historial del repartidor.
+Los dos atributos de cada índice se omiten juntos cuando no corresponde; no se guardan como null. ALL copia los atributos del ítem al índice; no significa que sus DTOs HTTP expongan todos esos campos. Cada servicio construye su proyección pública.
 
-## Patrones de acceso
+Un META puede tener una sola entrada por GSI. Las vistas separadas aportan las entradas adicionales necesarias por repartidor y por estado del comercio. El motor replica índices automáticamente; el código debe escribir las vistas. Consultar un índice no ofrece consistencia fuerte ni una relación de unicidad sobre sus valores.
 
-Los nombres usados en expresiones se aliasan (`#pk`, `#sk`, `#version`, etc.) para evitar palabras reservadas. `p` es la partición y `s` el prefijo de la siguiente tabla. Las Query utilizan `#pk = :pk AND begins_with(#sk, :prefix)`; para fecha inicial/final utilizan `#pk = :pk AND #sk BETWEEN :lo AND :hi`. No emplean Scan ni FilterExpression.
+La sustitución condicional de META al salir de PENDING elimina sus claves de abiertos; STORE_STATUS_VIEW conserva GSI2 pero cambia su grupo de estado. El historial GSI1 conserva createdAt. Las bandejas administrativas se ordenan por creación del perfil, no por última decisión.
 
-| Patrón | Repositorio / operación | Clave o p / s | Consistencia | Paginación y orden |
-| --- | --- | --- | --- | --- |
-| AP01 | Stores.get_profile, GetItem | STORE#id / PROFILE | Fuerte | No aplica |
-| AP02 | Couriers.get_profile, GetItem | COURIER#id / PROFILE | Fuerte | No aplica |
-| AP03 | Orders.get_order, GetItem | ORDER#id / META | Fuerte | No aplica |
-| AP04 | Orders.list_events, Query base | ORDER#id / EVENT# | Fuerte | Cursor; ascendente |
-| AP05 | Orders.list_store_orders, Query GSI1 | STORE#id / ORDER# | Eventual | Cursor; descendente |
-| AP06 | Orders.list_store_orders_by_status, Query GSI2 | STORE#id#status / CREATED# | Eventual | Cursor; descendente |
-| AP07 | Couriers.list_orders, Query GSI1 | COURIER#id / ORDER# | Eventual | Cursor; descendente |
-| AP08 | Orders.list_open_orders, Query GSI2 | ZONE#id#OPEN / CREATED# | Eventual | Cursor; ascendente |
-| AP09 | Couriers.get_active, GetItem | COURIER#id / ACTIVE | Fuerte | No aplica |
-| AP10 | Availability.list_present, ZRANGEBYSCORE + GET | couriers:available:zoneId; courier:heartbeat:courierId | Presencia efímera | Cursor score/courierId; ascendente |
-| AP11 | Tracking.get_tracking, GetItem + Query | Token → ORDER#id / META, luego ORDER#id / EVENT# | Fuerte por operación; no es snapshot común | Cursor de eventos |
-| AP12 | Analytics.get_month, GetItem | STORE#id / STATS#YYYY-MM | Fuerte | No aplica |
-| AP13 | Approvals.list_profiles, Query GSI2 + GetItem perfil | ADMIN#kind#estado / CREATED# | Eventual + relectura fuerte | Cursor; descendente |
-| AP14 | Approvals.events, Query base | PROFILE_AUDIT#kind#id / EVENT# | Fuerte | Cursor; descendente |
+## Consistencia, páginas y rangos
 
-El acceso técnico adicional `IdempotencyRepository.get_result` usa GetItem fuerte de REQUEST#scope#requestId / IDEMPOTENCY. `scope` se construye con el ID del actor y una operación versionada, por ejemplo `actor:orders.create.v1`. Retención y respuesta a reintentos quedan para SPEC-02; no se habilita TTL para estos registros.
+`Repository.get` y Query base usan ConsistentRead=true; Query GSI1/GSI2 no. `limit` está entre 1 y 100; el cursor contiene versión de formato, huella de consulta y LastEvaluatedKey. Se valida la partición/prefijo/índice/dirección/rango y las claves incluidas; cambiar de consulta invalida el cursor. El cursor no está firmado y no autoriza acceso.
 
-## Cursores y fechas
+Las consultas de historial aceptan rangos start/end mediante el repositorio; el contrato de cada ruta determina qué parámetros expone. `BETWEEN` incluye extremos; el límite superior incorpora `#~` para abarcar IDs de un mismo instante. No hay snapshot entre páginas ni orden causal global de eventos entre relojes.
 
-Los repositorios devuelven `Page(items, next_cursor)` y aceptan `limit` entre 1 y 100. El cursor base64 transporta la LastEvaluatedKey y un identificador SHA-256 de la consulta: partición, índice, prefijo, dirección y rango. Se rechaza cuando cambia esa consulta o contiene claves incompatibles. Se puede cambiar el tamaño de página.
+Las bandejas administrativas revalidan cada perfil devuelto por GSI con GetItem fuerte y descartan filas cuyo estado ya cambió. Eso puede producir menos de limit resultados, incluso cero, con nextCursor. La relectura evita mostrar el estado obsoleto de esa fila; no vuelve fuerte al índice ni garantiza que ya aparezcan todos los registros recién insertados.
 
-Los rangos `start`/`end` incluyen los instantes extremos; el límite superior agrega `#~`, por encima de los IDs ASCII admitidos, para incluir todos los desempates del instante final. Un cursor puede conducir a una página vacía al finalizar: solo su ausencia confirma que no hay otra página. Las inserciones concurrentes no ofrecen una vista congelada.
+## Escrituras e invariantes
 
-Estos cursores no están firmados ni constituyen autorización; las rutas futuras deberán verificar actor y pertenencia en cada llamada. No se filtra una consulta por el cursor recibido: la partición siempre la fija el repositorio. Las lecturas GSI no autorizan una aceptación; SPEC-02 revalidará condiciones en la tabla base.
+Crear/aceptar/recoger/entregar/cancelar/fallar mantienen META, evento y vistas necesarias en un commit; los comandos de pedidos añaden resultado idempotente. Aceptar añade elegibilidad de perfil y Put de ACTIVE si no existe. Liberar ACTIVE exige el orderId esperado para no borrar la asignación de otra entrega.
 
-## Seguimiento y presencia
+Las transiciones usan Put completo con versión esperada. Agregados usan ADD en el commit de entrega, no CAS sobre un snapshot del contador. La condición de transición y el registro idempotente evitan sumar dos veces. PROFILE_AUDIT y perfil se confirman juntos; suspender repartidor añade ConditionCheck de ausencia de ACTIVE. No hay un commit distribuido con Redis.
 
-El token tiene formato `orderId.secret`, con secreto aleatorio de 32 bytes codificado URL-safe. Solo SHA-256 del secreto se guarda en META. La lectura valida el formato, obtiene el pedido por clave y compara el hash con tiempo constante antes de consultar eventos. La respuesta elimina direcciones, tarifa, IDs de participantes, claves físicas y hashes: solo entrega ID, estado, fecha de actualización y hitos paginados. Tracking consume un protocolo `OrderReader`, sin importar implementaciones privadas de Orders.
+No hay borrado rutinario de eventos, idempotencia ni auditoría, y no se habilita TTL para ellos. expiresAt de credencial es una condición lógica en aplicación. Cambiar retención requiere especificar qué garantías se mantienen tras expirar un resultado idempotente o eliminar eventos.
 
-El generador de tokens existe para concretar el acceso sin Scan; su emisión HTTP, revocación y tratamiento del resultado idempotente se definirán en las siguientes SPEC. No se guarda el secreto en el catálogo ni en registros idempotentes del seed.
+## Redis: datos efímeros y caché
 
-En Redis, el ZSET usa courierId como miembro y epoch de último heartbeat como score. Se filtra por ventana vigente, se comprueba que exista la clave con TTL, y que zona y epoch coincidan con el candidato. Se omiten miembros vencidos, cambiados de zona, inválidos o con JSON corrupto. El cursor desempata scores iguales por courierId. La página no es un snapshot y debe renovarse frente a cambios concurrentes. No se modifica disponibilidad persistida ni se adjudican pedidos desde esta lectura.
+| Familia | Estructura | Uso |
+| --- | --- | --- |
+| courier:heartbeat:courierId | String JSON con TTL | Señal reciente por repartidor |
+| couriers:available:zoneId | ZSET | Descubrimiento por zona y tiempo |
+| cache:store:storeId:stats:month | String JSON con TTL | Cache-Aside del agregado DynamoDB |
+| tracking:order:orderId:latest | String JSON, actualización Lua | Última muestra, orden/secuencia, TTL y parada |
+| tracking:order:orderId:route:phase | String JSON | Snapshot de ruta, segmentos y progreso |
+| Locks/cooldown/rate limits/contador de Tracking | Strings/contadores con expiración | Coordinación temporal de cálculo y publicación |
 
-## Escrituras transaccionales
+Los nombres completos y TTL específicos de Tracking están en [guía GEO](../geo/README.md) y `tracking/routes.py`, `location_store.py`. Redis no decide asignación ni reemplaza ACTIVE. Hay coordenadas de movimiento en Redis, nunca una colección histórica de posiciones en esta tabla.
 
-Cada repositorio produce descriptores sin confirmar cambios. `build_put` crea con condición de ausencia o sustituye con `expected_version`; en reemplazos exige versión anterior + 1. La sustitución completa elimina atributos GSI obsoletos. Cada módulo solo construye puts de sus tipos. Stores expone condición de habilitación/versionado; Couriers de habilitación, disponibilidad, zona y versión, además de liberación ACTIVE condicionada al orderId esperado.
+## Migración y ejemplos
 
-La composición debe escribir META, evento y vistas necesarias en una misma llamada `transact_write_items`. El adaptador rechaza tablas ajenas, claves inválidas, acciones desconocidas, dos acciones sobre un mismo PK/SK, transacciones vacías o de más de 100 acciones. Estos son mecanismos de almacenamiento; la composición completa de crear/aceptar/entregar y sus invariantes de concurrencia corresponde a SPEC-02.
+Perfiles anteriores a SPEC-10 requieren [backfill](../admin/README.md): Scan paginado solo de mantenimiento y Update condicional por versión/enabled/estado previo. Añade approvalStatus/GSI2PK/GSI2SK. No modifica permisos/versiones ni crea auditoría retroactiva. Si hay conflictos concurrentes, omite esos perfiles y se puede repetir.
 
-Se comprueba máximo de clave en UTF-8: PK 2048 bytes y SK 1024, también en índices. El tamaño del JSON AttributeValue debe caber en 400 KiB por ítem y el JSON de la transacción en 4 MiB: son umbrales conservadores que pueden rechazar antes que el servicio porque cuentan envolturas JSON. No se afirma un cálculo exacto del tamaño facturable.
-
-Referencias oficiales: [límites DynamoDB](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Constraints.html), [paginación Query](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Query.Pagination.html) y [TransactWriteItems](https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_TransactWriteItems.html).
-
-## Seed y pruebas
+[Catálogo JSON](catalogo-items.json): ejemplos sintéticos de todos los tipos, con claves/atributos compatibles con `model.validate`. No es una respuesta HTTP ni una copia del entorno. Sus ejemplos de auditoría/credencial son ilustraciones independientes, no un único snapshot transaccional para cargar directamente. El seed de datos de SPEC-01 sigue generando su conjunto original de nueve tipos; el catálogo incluye además TRACKING_ACCESS y PROFILE_AUDIT, sin cambiar lo que carga ese script.
 
 ```bash
 docker compose exec -T cdk-dev python -m scripts.seed_data --namespace SEED_demo
 docker compose exec -T cdk-dev python -m scripts.seed_data --namespace SEED_demo --clean
-docker compose exec -T cdk-dev python -m pytest tests/test_access_patterns.py tests/test_storage_model.py -v
-docker compose exec -T cdk-dev python -m pytest tests/integration/test_data_model.py -m integration -v
+docker compose exec -T cdk-dev python -m pytest tests/test_storage_model.py tests/test_access_patterns.py tests/test_approvals.py -q
+docker compose exec -T cdk-dev python -m pytest tests/integration/test_data_model.py tests/integration/test_approvals_http.py -m integration -q
 ```
 
-El seed exige namespace reservado `SEED_` de hasta 64 caracteres; genera IDs y fechas deterministas, un comercio, tres repartidores, siete pedidos, eventos, vistas, ACTIVE, agregado e idempotencia. Repetirlo sobrescribe únicamente sus claves conocidas. La limpieza reconstruye esas claves y usa Delete, ZREM y DEL; no recorre la tabla ni vacía Redis. El estado sintético no se debe mezclar con datos de uso real. Los secretos deterministas del seed son exclusivamente de demostración; la creación normal usará aleatoriedad.
-
-Los unitarios usan moto/fakeredis y registran claves, expresiones, índice y consistencia de las llamadas. Verifican los doce patrones, todas las páginas, rangos, rechazo de cursores cruzados, límites, sustitución de índices, rollback y limpieza del seed. La integración repite los doce accesos con namespace UUID y espera convergencia de GSIs en MiniStack. Todavía no acredita carreras de asignación ni autorización HTTP.
-
-## Extensión SPEC-08: credencial de seguimiento
-
-`TRACKING_ACCESS` usa `PK=ORDER#<id>`, `SK=TRACKING`, sin GSI. Contiene `orderId`, `nonce` aleatorio de 256 bits, `expiresAt` (epoch), `revoked`, versión y metadatos del esquema. Se crea junto a META en la transacción inicial; su revocación no modifica la versión ni las vistas del pedido. No contiene coordenadas ni el token público en claro. Su expiración es lógica, no TTL físico, para conservar la revocación. Las posiciones viven exclusivamente en Redis con TTL 120 s. AP11 añade una lectura fuerte por clave exacta de la credencial al Get de META y Query de eventos; no añade Scan. [Diseño GEO](../geo/README.md).
-
-## Aprobaciones administrativas — SPEC-10
-
-Los perfiles nuevos incluyen approvalStatus; los antiguos requieren [migración explícita](../admin/README.md). enabled sigue siendo el permiso efectivo; PENDING y SUSPENDED implican false. El GSI comparte espacio con pedidos mediante prefijos distintos. La bandeja revalida cada perfil con GetItem fuerte y puede devolver página vacía con nextCursor. Detalle y auditoría son exclusivos de ADMIN.
-
-Perfil y PROFILE_AUDIT se escriben en una transacción con versión esperada. La suspensión de repartidor añade ConditionCheck de ausencia de ACTIVE, compitiendo con la condición de elegibilidad del accept. No-op no genera eventos. La auditoría no tiene TTL ni índice; retención indefinida en la demo. No se reconstruyen hechos anteriores.
+El namespace reservado del seed y sus claves deterministas permiten limpiar sin Scan. No debe confundirse ese conjunto con las altas normales, que generan IDs y credenciales según su caso de uso.

@@ -1,5 +1,7 @@
 # GEO-00 — Verificación previa
 
+> Antecedente histórico de SPEC-08 v1. Para la implementación vigente con MapLibre, OSRM y puntos estáticos E6, consultar [guía GEO](README.md) y [GEO-00 v2](GEO-00-V2.md). Los conteos siguientes corresponden a esa verificación inicial.
+
 MiniStack instalado: `ministackorg/ministack:1.5.36`, Lambda Python 3.12; Redis independiente 7.4.2. Antes de implementar se ejecutó `tests/integration/test_api_flow.py -m integration`: **2 passed**, 3.07 s. El flujo real cubre login, creación, aceptación, recogida y entrega por API Gateway → Lambda → DynamoDB, incluida asignación única y caché Redis. DescribeTable devolvió ACTIVE; get_routes devolvió 30 rutas; GetFunctionConfiguration confirmó Python 3.12. Redis `EVAL return 1` devolvió 1. La compatibilidad se acredita para estas operaciones, no para todas las APIs AWS.
 
 Se preservan endpoints `/api/v1`, tabla e índices actuales. Tracking será dueño de ubicación; Redis conservará solo la última muestra (120 s) y control atómico Lua. Se añade un ítem `ORDER#id / TRACKING` sin GSI para nonce aleatorio, expiración y revocación; no guarda coordenadas. El token existente derivado solo del ID se mantiene únicamente para seguimiento histórico de estados; no autoriza ubicación. Los pedidos nuevos recibirán tokens con entropía aleatoria, hash y vencimiento.
