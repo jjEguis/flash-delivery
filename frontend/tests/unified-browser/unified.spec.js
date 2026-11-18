@@ -16,8 +16,9 @@ async function fixture(page,{role='STORE',theme='light',signedIn=true,profile='e
     else if(path==='/zones')body={items:[{zoneId:'centro',name:'Centro'}]};
     else if(path==='/stores/me'||path==='/couriers/me'){
       if(profile==='missing')return route.fulfill({status:404,json:{error:{code:'NOT_FOUND',message:'Registra tu perfil'}}});
-      body={storeId:'actor_private',courierId:'actor_private',name:role==='COURIER'?'Andrés Pérez':'Café del Mar',zoneId:'centro',enabled:profile!=='waiting',available:true};
-    }else if(path==='/stores/me/orders')body={items:orders,nextCursor:null};
+      body={storeId:'actor_private',courierId:'actor_private',name:role==='COURIER'?'Andrés Pérez':'Café del Mar',zoneId:'centro',enabled:!['waiting','suspended'].includes(profile),approvalStatus:profile==='suspended'?'SUSPENDED':undefined,available:true};
+    }else if(path==='/admin/stores'||path==='/admin/couriers')body={items:[],nextCursor:null};
+    else if(path==='/stores/me/orders')body={items:orders,nextCursor:null};
     else if(path==='/stores/me/stats')body={deliveredCount:2,totalFeeMinor:19000,source:'cache'};
     else if(path==='/zones/centro/couriers')body={items:[{courierId:'courier_1',expiresInSeconds:60}],nextCursor:null};
     else if(path==='/couriers/me/active')body={order:orders[1]};
@@ -169,4 +170,11 @@ for(const theme of ['light','dark'])test(`puntos numéricos accesibles y sin des
   await expect(page.getByLabel('Latitud de recogida',{exact:true})).toHaveAttribute('aria-invalid','false');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   expect((await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa','wcag22aa']).analyze()).violations).toEqual([]);
+});
+
+for(const role of ['STORE','COURIER'])test(`perfil suspendido ${role} se distingue de una solicitud pendiente`,async({page})=>{
+  await fixture(page,{role,profile:'suspended'});await page.goto(role==='STORE'?'/#/comercio':'/#/repartidor');
+  await expect(page.getByRole('heading',{name:'Tu perfil está suspendido'})).toBeVisible();
+  await expect(page.getByText(/Contacta al administrador para revisar la decisión/)).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Tu registro está en revisión'})).toHaveCount(0);
 });

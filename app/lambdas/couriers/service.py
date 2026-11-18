@@ -14,8 +14,9 @@ PHYSICAL = {"PK", "SK", "entityType", "schemaVersion"}
 
 
 def courier_view(courier):
-    return {name: courier[name] for name in ("courierId", "name", "zoneId", "enabled", "available",
-                                             "createdAt", "updatedAt", "version")}
+    from lambdas.shared.storage.model import profile_status
+    return {"approvalStatus": profile_status(courier), **{name: courier[name] for name in ("courierId", "name", "zoneId", "enabled", "available",
+                                             "createdAt", "updatedAt", "version")}}
 
 
 def history_view(view):
@@ -73,17 +74,10 @@ def set_availability(adapter, actor: ActorContext, available):
     return courier_view(_replace(adapter, courier, available=available))
 
 
-def set_courier_enabled(adapter, actor: ActorContext, courier_id, enabled):
-    authorize(actor, "ADMIN")
-    if type(enabled) is not bool:
-        raise ValidationError("enabled debe ser booleano")
-    courier = _load(adapter, courier_id, missing=NotFoundError("Repartidor no encontrado", "COURIER_NOT_FOUND"))
-    if courier["enabled"] == enabled:
-        return courier_view(courier)
-    changes = {"enabled": enabled}
-    if not enabled:
-        changes["available"] = False  # un perfil deshabilitado no puede seguir disponible
-    return courier_view(_replace(adapter, courier, **changes))
+def set_courier_enabled(adapter, actor: ActorContext, courier_id, enabled, *, expected_version=None, reason=None):
+    from lambdas.approvals.service import change
+    return courier_view(change(adapter, actor, 'COURIER', courier_id, enabled,
+                                expected_version=expected_version, reason=reason))
 
 
 def get_active_order(adapter, actor: ActorContext):

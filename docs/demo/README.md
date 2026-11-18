@@ -10,9 +10,9 @@ Usar tres sesiones independientes: comercio en ventana normal, repartidor en inc
 2. Repetir como Repartidor con otro usuario nuevo y **la misma zona**.
 3. Cada perfil espera habilitación y muestra «Identificador para el administrador». Se puede seleccionar y copiar con teclado.
 4. En la sesión administrativa, elegir Administración y entrar como `admin`. El código local de ejemplo es `admin-local`; si se configuró `DEV_ADMIN_CODE`, usar ese valor. Es un acceso de desarrollo, no autenticación de producción.
-5. En Comercios/Repartidores, introducir el identificador correspondiente y pulsar Habilitar. Volver a cada sesión y pulsar «Ya me habilitaron, actualizar».
+5. En Comercios/Repartidores, filtrar Pendiente, abrir «Revisar perfil», escribir un motivo, pulsar «Habilitar perfil» y confirmar la decisión. Volver a cada sesión y pulsar «Ya me habilitaron, actualizar».
 
-Las cuentas creadas con `scripts.demo` ya están habilitadas: sirven para probar entregas rápidamente, pero no demuestran el paso de aprobación. La interfaz administrativa aún requiere el ID; el listado de solicitudes pendientes corresponde al próximo incremento.
+Las cuentas creadas con `scripts.demo` ya están habilitadas: sirven para probar entregas rápidamente, pero no demuestran el paso de aprobación. La bandeja permite revisar solicitudes sin copiar el ID; el formulario manual sigue disponible como alternativa. [Guía de aprobaciones y migración](../admin/README.md).
 
 ## Publicar y recorrer
 

@@ -44,10 +44,17 @@ test('registro → aprobación administrativa → pedido → ambos recorridos �
     await expect(page.getByRole('heading',{name:'Tu registro está en revisión'})).toBeVisible();
   }
   async function enable(admin,kind,id) {
-    const form=admin.locator(`[data-enable="${kind}"]`);
-    await form.getByLabel('Identificador',{exact:true}).fill(id);
-    await form.getByRole('button',{name:'Habilitar',exact:true}).click();
-    await expect(form.locator('[data-out]')).toContainText('habilitado');
+    const name=kind==='store'?'Comercio de prueba guiada':'Repartidor de prueba guiada';
+    await admin.locator(`#admin-${kind==='store'?'stores':'couriers'}`).getByRole('button',{name:'Actualizar',exact:true}).click();
+    await admin.getByRole('button',{name:'Revisar perfil de '+name,exact:true}).click();
+    const dialog=admin.getByRole('dialog',{name:'Revisar perfil'});
+    await expect(dialog.getByText(id,{exact:true})).toBeVisible();
+    await dialog.getByLabel('Motivo de la decisión').fill('Validación de registro en sesión independiente');
+    await dialog.getByRole('button',{name:'Habilitar perfil',exact:true}).click();
+    await dialog.getByRole('button',{name:'Confirmar decisión',exact:true}).click();
+    await expect(dialog.getByRole('status')).toHaveText('Estado confirmado.');
+    await expect(dialog.getByText('Validación de registro en sesión independiente',{exact:true})).toBeVisible();
+    await dialog.getByRole('button',{name:'Cerrar',exact:true}).click();
   }
   try {
     const store=await pageFor(data.actors.STORE),courier=await pageFor(data.actors.COURIER),admin=await pageFor('admin');

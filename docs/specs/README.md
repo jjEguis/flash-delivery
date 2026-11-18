@@ -2,7 +2,7 @@
 
 Base importada del paquete v1.1 aportado por el usuario. Son requisitos y criterios de aceptación; su presencia no implica implementación ni validación. Consultar el [plan](../PLAN_DE_TRABAJO.md) para conocer las brechas actuales.
 
-Estado: SPEC-00 a SPEC-08 implementadas, incluida la ampliación de seguimiento vial v2, con evidencias en [validación](../validation.md). Resultados de calidad en el [informe](../informe-calidad.md).
+Estado: SPEC-00 a SPEC-09 fusionadas; SPEC-10 implementada, pendiente revisión, incluida la ampliación de seguimiento vial v2, con evidencias en [validación](../validation.md). Resultados de calidad en el [informe](../informe-calidad.md).
 
 | Orden | Especificación | Resultado esperado |
 | --- | --- | --- |
@@ -15,7 +15,9 @@ Estado: SPEC-00 a SPEC-08 implementadas, incluida la ampliación de seguimiento 
 | 6 | [Calidad](SPEC-06-CALIDAD.md) | Evidencia reproducible de corrección y rendimiento |
 | 7 | [Fiabilidad del frontend](SPEC-07-FRONTEND-FIABILIDAD.md) | Reintentos persistidos, paginación del repartidor y tests de navegador |
 | 8 | [Seguimiento vial v2](SPEC-08_LIVE_DELIVERY_TRACKING_v2.md) | OSRM privado, MapLibre, rutas por fase, progreso/ETA, desvíos, simulador vial y permisos; [guía](../geo/README.md). Sustituye el alcance de [v1](SPEC-08_GPS_TRACKING.md). |
-| 9 | [Demo guiada](SPEC-09-DEMO-GUIADA.md) | Registro/aprobación guiados, puntos completos y simulación por fase; implementada y validada; pendiente revisión del PR |
+| 9 | [Demo guiada](SPEC-09-DEMO-GUIADA.md) | Registro/aprobación guiados, puntos completos y simulación por fase; fusionada y validada |
+
+| 10 | [Aprobaciones administrativas](SPEC-10-APROBACIONES-ADMIN.md) | Bandejas por estado, auditoría y suspensión segura; implementada, pendiente revisión |
 
 El contrato vigente está en [OpenAPI](../api/openapi.json). Para nuevas funcionalidades, detallar actor, entradas, autorización, precondiciones, resultados, errores, persistencia y pruebas. `requestId` de trazabilidad e `Idempotency-Key` son conceptos distintos; mantener esa separación en API y frontend.
 

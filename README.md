@@ -2,7 +2,7 @@
 
 Aplicación de entregas de última milla con DynamoDB (tabla única), Redis, Python, Lambda y API Gateway, ejecutada localmente sobre MiniStack. Los comercios publican pedidos, los repartidores de la zona compiten por aceptarlos y una transacción condicional garantiza que solo uno gane. El destinatario sigue su pedido con un enlace seguro.
 
-Estado: SPEC-00 a SPEC-08 implementadas, con API HTTP completa (34 operaciones de módulos), interfaz web con reintentos, paginación y ubicación opcional, rutas OSRM locales y ETA durante entregas activas, y pruebas de backend y navegador. SPEC-09 añade la demo guiada de registro, aprobación y ambos recorridos. Consultar [especificaciones](docs/specs/README.md) y [validación](docs/validation.md).
+Estado: SPEC-00 a SPEC-09 fusionadas; SPEC-10 implementada y pendiente revisión, con API HTTP (40 operaciones de módulos), interfaz web con reintentos, paginación y ubicación opcional, rutas OSRM locales y ETA durante entregas activas, y pruebas de backend y navegador. SPEC-09 añade la demo guiada de registro, aprobación y ambos recorridos. Consultar [especificaciones](docs/specs/README.md) y [validación](docs/validation.md).
 
 ```text
 flash-delivery/
@@ -136,3 +136,7 @@ La aplicación de :8080 utiliza el diseño unificado en acceso, registro, comerc
 ## Demo guiada de principio a fin (SPEC-09)
 
 En el acceso, abrir «Cómo probar la entrega completa». Para demostrar aprobación, registrar usuarios nuevos de comercio y repartidor, habilitarlos desde una tercera sesión administrativa y continuar con el pedido. Los perfiles de ejemplo ya vienen habilitados. [Pasos, resultados esperados y prueba real](docs/demo/README.md).
+
+## Aprobaciones administrativas (SPEC-10)
+
+En Administración, revisar la bandeja de Comercios o Repartidores, filtrar el estado y abrir «Revisar perfil». Escribir un motivo y confirmar habilitación o suspensión. El detalle muestra el historial de decisiones. Una entrega activa bloquea la suspensión del repartidor. Para instalaciones existentes ejecutar la migración indicada en la [guía administrativa](docs/admin/README.md), después de provisionar el backend.

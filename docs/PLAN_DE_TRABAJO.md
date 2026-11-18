@@ -4,27 +4,15 @@ Actualizado: 2026-11-18. Este documento describe el estado actual; los diagnóst
 
 ## Base implementada y fusionada
 
-SPEC-00 a SPEC-08 v2: entorno MiniStack/Redis y OSRM local, modelo de tabla única y consultas sin Scan, transacciones/idempotencia, identidad local, perfiles y habilitación, creación/asignación/ciclo de entrega, presencia y estadísticas, frontend funcional con temas y paginación, seguimiento público y rutas por fase con ETA aproximada. Contrato vigente: [OpenAPI](api/openapi.json).
+SPEC-00 a SPEC-09: entorno MiniStack/Redis y OSRM local, modelo de tabla única y consultas sin Scan, transacciones/idempotencia, identidad local, perfiles y habilitación, creación/asignación/ciclo de entrega, presencia y estadísticas, frontend funcional con temas y paginación, seguimiento público y rutas por fase con ETA aproximada. Contrato vigente: [OpenAPI](api/openapi.json).
 
 El PR de SPEC-08 v2 fue fusionado en develop. No se necesita volver a implementar Orders, Dispatch, registro, habilitación por ID ni conexión del diseño a la API. El prototipo visual permanece separado como referencia.
 
-## Incremento actual — SPEC-09: demo guiada
+## Incremento actual — SPEC-10: aprobaciones administrativas
 
-[Especificación](specs/SPEC-09-DEMO-GUIADA.md). Hace visibles los pasos de registro/aprobación, separa las sesiones de cada actor y guía la selección de puntos. Corrige el descarte silencioso de coordenadas incompletas y la reutilización de una ruta del simulador al pasar a PICKED_UP. Mantiene la autorización de estados y añade una prueba real desde el registro hasta la entrega, con aprobación por administrador desde la UI.
+[Especificación](specs/SPEC-10-APROBACIONES-ADMIN.md). Bandejas paginadas por estado para comercios y repartidores, detalle y auditoría. Aprobación/suspensión/reactivación con motivo y versión, confirmación nativa y guard transaccional contra suspensión con entrega activa. Reutiliza GSI2 y requiere migración explícita para perfiles antiguos. [Guía](admin/README.md).
 
-No se fusionará el PR de este incremento sin autorización. El resultado de pruebas, capturas y limitaciones se registrará en docs/validation.md.
-
-## Próximo incremento propuesto — aprobaciones administrativas
-
-Antes de implementar, concretar una nueva SPEC con:
-
-- Consulta paginada de comercios/repartidores pendientes y habilitados, limitada a ADMIN.
-- Patrón de acceso DynamoDB e índices/proyecciones necesarios, sin introducir Scan como consulta operativa.
-- Aprobación, suspensión/reactivación y tratamiento de un repartidor con pedido activo.
-- Si se exige auditoría: actor administrador, fecha, motivo, retención y patrón de consulta.
-- Estados vacíos/errores, confirmaciones y pruebas de permisos e integración real.
-
-La habilitación por identificador ya funciona; falta el listado y su contrato. No inventar ese endpoint desde el frontend ni aprobar perfiles automáticamente como atajo de demo.
+SPEC-09 ya fue fusionada en develop. SPEC-10 se entrega en su propia rama y PR; pendiente revisión. No fusionar sin autorización. Evidencia en docs/validation.md.
 
 ## Trabajo posterior por priorizar
 

@@ -1,5 +1,29 @@
 # Registro de validación
 
+## SPEC-10 — Aprobaciones administrativas — 2026-11-18
+
+Base develop `1571e0c`, SPEC-09 fusionada; rama `feature/spec-10-aprobaciones-admin`, PR hacia develop pendiente revisión. [Especificación](specs/SPEC-10-APROBACIONES-ADMIN.md), [guía y migración](admin/README.md). Bandejas por tipo/estado, detalle mínimo, decisiones con motivo/versión/confirmación y auditoría. Los PATCH existentes siguen siendo compatibles; el formulario manual conserva acceso por ID.
+
+| Comprobación | Resultado observado |
+| --- | --- |
+| Backend completo moto/fakeredis | **155 passed**, 23 integraciones deseleccionadas; 8 pruebas nuevas de aprobaciones |
+| Integración completa MiniStack/Redis/OSRM | **23 passed**, 31.58 s; incluye 4 nuevas de aprobaciones HTTP, sin retirar integraciones anteriores |
+| Concurrencia HTTP real | Tres carreras accept/suspensión: exactamente una operación ganadora, nunca ACTIVE con perfil suspendido; auditoría solo por cambios confirmados |
+| Migración local | 4 perfiles examinados/actualizados; segunda pasada dry-run: 4 sin cambios, 0 actualizaciones, 0 conflictos. Permisos y versiones conservados |
+| Build normal/local, TypeScript y ESLint | Correctos; advertencia de tamaño del motor cartográfico preexistente |
+| Frontend HTTP/paginación y componentes/tema | **22 + 7 passed** |
+| Regresión de pedidos/paginación escritorio y móvil | **10 passed** |
+| Interfaz unificada | **71 passed**; 7 casos de bandeja y 2 de cuenta suspendida añadidos a los 62 previos |
+| Mapas/GPS/simulador | **20 passed** |
+| Build de producción y encabezados | **2 passed** |
+| Navegador con API real | **2 passed (2.2 min)**; registro → aprobación por bandeja y motivo → ambos recorridos → entrega: **54.2 s**; regresión de simulador vial conservada |
+
+Se verificaron autorización ADMIN, filtros y cursores por ámbito, consultas sin Scan, relectura fuerte tras GSI obsoleto, no-op sin duplicados, versiones antiguas, rollback de auditoría, entrega activa y migración condicional ante cambios concurrentes. Las altas llevan GSI2 desde creación; perfiles anteriores requieren el script explícito. Nuevos endpoints no añaden tablas/GSIs. Auditoría por partición propia y retención indefinida en la demo; no se inventan hechos históricos.
+
+Las pruebas de navegador cubren pendiente → habilitado → suspendido → reactivado, motivo obligatorio, Cancelar sin escritura, Escape nativo, conflicto 409 con nueva versión y motivo conservado, consulta fallida y reintento de la misma página sin perder perfiles anteriores. Axe sin violaciones con diálogo abierto en claro/oscuro y 390/1440 px; matriz general 360–1440 px. Capturas inspeccionadas: [oscuro móvil](evidencias/spec10/aprobacion-oscuro-390.png), [claro escritorio](evidencias/spec10/aprobacion-claro-1440.png); datos simulados sin credenciales. Se aplicaron frontend-design y modern-web-guidance (`dialog`): showModal, autofocus en Cancelar, Escape/foco nativos y contención de scroll en diálogo y backdrop.
+
+Integraciones y navegador real usan identificadores propios y limpian perfil, eventos de auditoría, pedidos, intenciones y presencia sin Scan. La demo local queda compilada en :8080 con simulación habilitada. Límites: índice eventual, clasificación técnica de perfiles antiguos, motivo/versión opcionales para clientes antiguos, autenticación local de desarrollo; GPS físico y lector de pantalla humano siguen pendientes. No hay acceso GPS nuevo para ADMIN.
+
 ## SPEC-09 — Demo guiada — 2026-11-18
 
 Partiendo de develop con SPEC-08 v2 fusionada, se implementó [SPEC-09](specs/SPEC-09-DEMO-GUIADA.md) en `feature/spec-09-demo-guiada`. [Guía de prueba manual](demo/README.md). El acceso explica sesiones separadas y registro/habilitación; la espera muestra el ID seleccionable. El formulario ofrece mapa o coordenadas y bloquea selecciones incompletas tras intentar publicar, enfocando el mensaje. Se permite continuar por estados al quitar todos los puntos.

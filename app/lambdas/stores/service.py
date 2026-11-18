@@ -35,8 +35,9 @@ def profile_name(value):
 
 
 def store_view(store):
-    return {name: store[name] for name in ("storeId", "name", "zoneId", "enabled", "createdAt",
-                                           "updatedAt", "version")}
+    from lambdas.shared.storage.model import profile_status
+    return {"approvalStatus": profile_status(store), **{name: store[name] for name in ("storeId", "name", "zoneId", "enabled", "createdAt",
+                                           "updatedAt", "version")}}
 
 
 def register_store(adapter, actor: ActorContext, *, name, zone_id):
@@ -57,23 +58,7 @@ def get_my_store(adapter, actor: ActorContext):
     return store_view(store)
 
 
-def set_store_enabled(adapter, actor: ActorContext, store_id, enabled):
-    """Habilitación administrativa con bloqueo optimista por versión."""
-    authorize(actor, "ADMIN")
-    if type(enabled) is not bool:
-        raise ValidationError("enabled debe ser booleano")
-    repo = StoresRepository(adapter)
-    try:
-        store = repo.get_profile(store_id)
-    except ValueError as exc:
-        raise ValidationError("storeId inválido") from exc
-    if store is None:
-        raise NotFoundError("Comercio no encontrado", "STORE_NOT_FOUND")
-    if store["enabled"] == enabled:
-        return store_view(store)
-    data = {k: v for k, v in store.items() if k not in PHYSICAL}
-    data.update(enabled=enabled, updatedAt=max(clock.now(), store["updatedAt"]), version=store["version"] + 1)
-    new = make_item("STORE", **data)
-    commit(adapter, [(repo.build_put(new, expected_version=store["version"]),
-                      ConflictError("El comercio cambió; vuelve a intentarlo", "STORE_CHANGED"))])
-    return store_view(new)
+def set_store_enabled(adapter, actor: ActorContext, store_id, enabled, *, expected_version=None, reason=None):
+    from lambdas.approvals.service import change
+    return store_view(change(adapter, actor, 'STORE', store_id, enabled,
+                                expected_version=expected_version, reason=reason))

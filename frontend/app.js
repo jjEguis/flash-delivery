@@ -1,6 +1,7 @@
 import { createApiClient, validPage, validCreatedOrder } from "./api.js";
 import { createPagedList } from "./pagination.js";
 import { installShell, updateShell, updateProfile } from "./src/live/Shell.tsx";
+import { mountApprovals } from "./src/features/admin/mount.tsx";
 import { mountGeo, mountOrderPoints } from "./src/features/geo/mount.tsx";
 
 // FlashDelivery — SPA sin dependencias. Habla con /api/v1 a través del proxy local.
@@ -144,12 +145,12 @@ async function registration(kind) {
   }));
 }
 
-function waiting(kind, id) {
+function waiting(kind, id, status) {
   app.innerHTML = `<section class="card" style="max-width:560px;margin:0 auto">
-    <h1>Tu registro está en revisión</h1><div class="notice" style="margin-top:20px">Tu ${kind} está pendiente de habilitación.</div>
+    <h1>${status === "SUSPENDED" ? "Tu perfil está suspendido" : "Tu registro está en revisión"}</h1><div class="notice" style="margin-top:20px">Tu ${kind} está ${status === "SUSPENDED" ? "suspendido. Contacta al administrador para revisar la decisión" : "pendiente de habilitación"}.</div>
     <p>Comparte este identificador con un administrador:</p>
     <label for="registrationId">Identificador para el administrador</label><input id="registrationId" value="${esc(id)}" readonly autocomplete="off" spellcheck="false">
-    <p class="muted">En otra sesión, el administrador entra a Administración, busca la sección ${kind==='comercio'?'Comercios':'Repartidores'}, introduce este identificador y pulsa «Habilitar». Después actualiza aquí. La aprobación no es automática.</p>
+    <p class="muted">En otra sesión, el administrador entra a Administración, busca tu perfil en ${kind==='comercio'?'Comercios':'Repartidores'}, abre «Revisar perfil» y confirma «Habilitar perfil». También puede usar este identificador en el formulario manual. Después actualiza aquí. La aprobación no es automática.</p>
     <button class="btn btn--block btn--ghost" data-act="reload">Ya me habilitaron, actualizar</button></section>`;
 }
 
@@ -167,7 +168,7 @@ async function storeView() {
   if (owner !== viewVersion) return;
   const store = await profile("/stores/me", "store");
   if (owner !== viewVersion || !store) return;
-  if (!store.enabled) return waiting("comercio", store.storeId);
+  if (!store.enabled) return waiting("comercio", store.storeId, store.approvalStatus);
   updateProfile(store.name, zoneName(store.zoneId));
   const ui = { filter: "", cursor: null, items: [] };
   const monthLabel = new Intl.DateTimeFormat('es-CO',{month:'long',timeZone:'UTC'}).format(new Date(month()+'-01T00:00:00Z'));
@@ -313,7 +314,7 @@ async function courierView() {
   if (owner !== viewVersion) return;
   let courier = await profile("/couriers/me", "courier");
   if (owner !== viewVersion || !courier) return;
-  if (!courier.enabled) return waiting("perfil de repartidor", courier.courierId);
+  if (!courier.enabled) return waiting("perfil de repartidor", courier.courierId, courier.approvalStatus);
   updateProfile(courier.name, zoneName(courier.zoneId));
   let presence = null;
   app.innerHTML = `
@@ -432,8 +433,8 @@ async function courierView() {
 // ---------- administración ----------
 function adminView() {
   app.innerHTML = `<div class="live-heading"><div><h1>Administración</h1><p>Perfiles, entregas e incidencias de tu operación.</p></div></div>
-    <div class="grid grid--2">
-      ${["store", "courier"].map((k) => `<section class="card" id="admin-${k==='store'?'stores':'couriers'}" tabindex="-1"><h2>${k === "store" ? "Comercios" : "Repartidores"}</h2>
+    <div id="admin-approvals"></div><div class="grid grid--2">
+      ${["store", "courier"].map((k) => `<section class="card" id="admin-${k}-manual" tabindex="-1"><h2>Acceso manual · ${k === "store" ? "comercios" : "repartidores"}</h2>
         <form data-enable="${k}"><label for="${k}Id">Identificador</label><input id="${k}Id" required pattern="[A-Za-z0-9_\\-]+">
           <div class="row"><button class="btn btn--block" value="true">Habilitar</button><button class="btn btn--block btn--danger" value="false">Deshabilitar</button></div>
           <p class="muted" data-out style="margin-top:10px"></p></form></section>`).join("")}
@@ -444,6 +445,7 @@ function adminView() {
       <section class="card"><h2>Presencia por zona</h2><form id="zoneForm"><label for="zoneSel">Zona</label><select id="zoneSel"></select>
         <button class="btn btn--block btn--ghost">Ver conectados</button></form><div class="list" id="zoneOut" style="margin-top:12px"></div></section>
     </div>`;
+  disposeGeo = mountApprovals($("#admin-approvals"), session);
   zones().then((list) => { $("#zoneSel").innerHTML = list.map((z) => `<option value="${esc(z.zoneId)}">${esc(z.name)}</option>`).join(""); });
   app.querySelectorAll("[data-enable]").forEach((form) => form.addEventListener("submit", guard(async (e) => {
     e.preventDefault();

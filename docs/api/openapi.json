@@ -8,8 +8,33 @@
   "servers": [{"url": "http://127.0.0.1:8080", "description": "Frontend local con proxy a API Gateway en MiniStack"}],
   "security": [{"bearer": []}],
   "tags": [
-    {"name": "identity"}, {"name": "stores"}, {"name": "couriers"}, {"name": "orders"},
-    {"name": "dispatch"}, {"name": "availability"}, {"name": "tracking"}, {"name": "analytics"}
+    {
+      "name": "identity"
+    },
+    {
+      "name": "stores"
+    },
+    {
+      "name": "couriers"
+    },
+    {
+      "name": "orders"
+    },
+    {
+      "name": "dispatch"
+    },
+    {
+      "name": "availability"
+    },
+    {
+      "name": "tracking"
+    },
+    {
+      "name": "analytics"
+    },
+    {
+      "name": "approvals"
+    }
   ],
   "paths": {
     "/api/v1/orders/{orderId}/location": {
@@ -280,12 +305,54 @@
     },
     "/api/v1/admin/stores/{storeId}": {
       "patch": {
-        "tags": ["stores"], "summary": "Habilitar o deshabilitar un comercio (ADMIN)",
+        "tags": ["stores"],
+        "summary": "Habilitar o deshabilitar un comercio (ADMIN)",
         "parameters": [{"name": "storeId", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/Id"}}],
         "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EnabledInput"}}}},
         "responses": {"200": {"description": "Comercio", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Store"}}}},
                       "401": {"$ref": "#/components/responses/Error"}, "403": {"$ref": "#/components/responses/Error"},
-                      "404": {"$ref": "#/components/responses/Error"}, "409": {"$ref": "#/components/responses/Error"}}
+                      "404": {"$ref": "#/components/responses/Error"}, "409": {"$ref": "#/components/responses/Error"}},
+        "description": "Solo ADMIN. Perfil y evento de auditoría se escriben atómicamente. Sin cambios: no-op. 409 PROFILE_CHANGED si cambia la versión. Suspender repartidor con ACTIVE: 409 COURIER_HAS_ACTIVE_ORDER. PENDING + enabled=false pasa a SUSPENDED. Historial anterior no se reconstruye."
+      },
+      "get": {
+        "tags": [
+          "approvals"
+        ],
+        "summary": "Consultar perfil actual; solo ADMIN",
+        "parameters": [
+          {
+            "name": "storeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Correcto",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
       }
     },
     "/api/v1/couriers": {
@@ -330,12 +397,54 @@
     },
     "/api/v1/admin/couriers/{courierId}": {
       "patch": {
-        "tags": ["couriers"], "summary": "Habilitar o deshabilitar un repartidor (ADMIN)",
+        "tags": ["couriers"],
+        "summary": "Habilitar o deshabilitar un repartidor (ADMIN)",
         "parameters": [{"name": "courierId", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/Id"}}],
         "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EnabledInput"}}}},
         "responses": {"200": {"description": "Repartidor", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Courier"}}}},
                       "401": {"$ref": "#/components/responses/Error"}, "403": {"$ref": "#/components/responses/Error"},
-                      "404": {"$ref": "#/components/responses/Error"}, "409": {"$ref": "#/components/responses/Error"}}
+                      "404": {"$ref": "#/components/responses/Error"}, "409": {"$ref": "#/components/responses/Error"}},
+        "description": "Solo ADMIN. Perfil y evento de auditoría se escriben atómicamente. Sin cambios: no-op. 409 PROFILE_CHANGED si cambia la versión. Suspender repartidor con ACTIVE: 409 COURIER_HAS_ACTIVE_ORDER. PENDING + enabled=false pasa a SUSPENDED. Historial anterior no se reconstruye."
+      },
+      "get": {
+        "tags": [
+          "approvals"
+        ],
+        "summary": "Consultar perfil actual; solo ADMIN",
+        "parameters": [
+          {
+            "name": "courierId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Correcto",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
       }
     },
     "/api/v1/orders": {
@@ -524,6 +633,198 @@
         },
         "security": []
       }
+    },
+    "/api/v1/admin/stores": {
+      "get": {
+        "tags": [
+          "approvals"
+        ],
+        "summary": "Listar perfiles por estado (GSI2 eventual, relectura fuerte; solo ADMIN)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ApprovalStatus",
+              "default": "PENDING"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Correcto",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminProfilePage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/stores/{storeId}/events": {
+      "get": {
+        "tags": [
+          "approvals"
+        ],
+        "summary": "Consultar decisiones más recientes primero; solo ADMIN",
+        "parameters": [
+          {
+            "name": "storeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Correcto",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileAuditPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/couriers": {
+      "get": {
+        "tags": [
+          "approvals"
+        ],
+        "summary": "Listar perfiles por estado (GSI2 eventual, relectura fuerte; solo ADMIN)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ApprovalStatus",
+              "default": "PENDING"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Correcto",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminProfilePage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/couriers/{courierId}/events": {
+      "get": {
+        "tags": [
+          "approvals"
+        ],
+        "summary": "Consultar decisiones más recientes primero; solo ADMIN",
+        "parameters": [
+          {
+            "name": "courierId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Correcto",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileAuditPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -709,9 +1010,55 @@
       "Session": {"type": "object", "properties": {"token": {"type": "string"}, "expiresAt": {"type": "integer", "description": "epoch"}, "actor": {"$ref": "#/components/schemas/Actor"}}},
       "Zone": {"type": "object", "properties": {"zoneId": {"$ref": "#/components/schemas/Id"}, "name": {"type": "string"}}},
       "ProfileInput": {"type": "object", "required": ["name", "zoneId"], "properties": {"name": {"type": "string", "minLength": 1, "maxLength": 120}, "zoneId": {"$ref": "#/components/schemas/Id"}}},
-      "EnabledInput": {"type": "object", "required": ["enabled"], "properties": {"enabled": {"type": "boolean"}}},
-      "Store": {"type": "object", "properties": {"storeId": {"$ref": "#/components/schemas/Id"}, "name": {"type": "string"}, "zoneId": {"$ref": "#/components/schemas/Id"}, "enabled": {"type": "boolean"}, "createdAt": {"$ref": "#/components/schemas/Timestamp"}, "updatedAt": {"$ref": "#/components/schemas/Timestamp"}, "version": {"type": "integer"}}},
-      "Courier": {"type": "object", "properties": {"courierId": {"$ref": "#/components/schemas/Id"}, "name": {"type": "string"}, "zoneId": {"$ref": "#/components/schemas/Id"}, "enabled": {"type": "boolean"}, "available": {"type": "boolean"}, "createdAt": {"$ref": "#/components/schemas/Timestamp"}, "updatedAt": {"$ref": "#/components/schemas/Timestamp"}, "version": {"type": "integer"}}},
+      "EnabledInput": {
+        "type": "object",
+        "required": ["enabled"],
+        "properties": {
+          "enabled": {"type": "boolean"},
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Versión leída; 409 si cambió. Misma decisión ya aplicada es no-op."
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "Motivo; obligatorio en la interfaz. Clientes anteriores pueden omitirlo."
+          }
+        }
+      },
+      "Store": {
+        "type": "object",
+        "properties": {
+          "storeId": {"$ref": "#/components/schemas/Id"},
+          "name": {"type": "string"},
+          "zoneId": {"$ref": "#/components/schemas/Id"},
+          "enabled": {"type": "boolean"},
+          "createdAt": {"$ref": "#/components/schemas/Timestamp"},
+          "updatedAt": {"$ref": "#/components/schemas/Timestamp"},
+          "version": {"type": "integer"},
+          "approvalStatus": {
+            "$ref": "#/components/schemas/ApprovalStatus"
+          }
+        }
+      },
+      "Courier": {
+        "type": "object",
+        "properties": {
+          "courierId": {"$ref": "#/components/schemas/Id"},
+          "name": {"type": "string"},
+          "zoneId": {"$ref": "#/components/schemas/Id"},
+          "enabled": {"type": "boolean"},
+          "available": {"type": "boolean"},
+          "createdAt": {"$ref": "#/components/schemas/Timestamp"},
+          "updatedAt": {"$ref": "#/components/schemas/Timestamp"},
+          "version": {"type": "integer"},
+          "approvalStatus": {
+            "$ref": "#/components/schemas/ApprovalStatus"
+          }
+        }
+      },
       "CreateOrder": {
         "type": "object",
         "required": ["pickupAddress", "dropoffAddress", "feeMinor"],
@@ -963,6 +1310,153 @@
                 "$ref": "#/components/schemas/OrderLocation"
               }
             }
+          }
+        }
+      },
+      "ApprovalStatus": {
+        "type": "string",
+        "enum": [
+          "PENDING",
+          "ENABLED",
+          "SUSPENDED"
+        ]
+      },
+      "AdminProfile": {
+        "type": "object",
+        "required": [
+          "name",
+          "zoneId",
+          "enabled",
+          "approvalStatus",
+          "version"
+        ],
+        "properties": {
+          "storeId": {
+            "type": "string"
+          },
+          "courierId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "zoneId": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "approvalStatus": {
+            "$ref": "#/components/schemas/ApprovalStatus"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "activeOrderId": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "ProfileAudit": {
+        "type": "object",
+        "required": [
+          "eventId",
+          "profileKind",
+          "profileId",
+          "actorId",
+          "occurredAt",
+          "fromStatus",
+          "toStatus",
+          "reason",
+          "profileVersion"
+        ],
+        "properties": {
+          "eventId": {
+            "type": "string"
+          },
+          "profileId": {
+            "type": "string"
+          },
+          "actorId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "profileKind": {
+            "type": "string",
+            "enum": [
+              "STORE",
+              "COURIER"
+            ]
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "fromStatus": {
+            "$ref": "#/components/schemas/ApprovalStatus"
+          },
+          "toStatus": {
+            "$ref": "#/components/schemas/ApprovalStatus"
+          },
+          "profileVersion": {
+            "type": "integer",
+            "minimum": 2
+          },
+          "version": {
+            "type": "integer"
+          }
+        }
+      },
+      "AdminProfilePage": {
+        "type": "object",
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminProfile"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "ProfileAuditPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProfileAudit"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
           }
         }
       }
