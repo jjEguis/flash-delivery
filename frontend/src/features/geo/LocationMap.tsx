@@ -10,7 +10,7 @@ import { useTheme } from '../../app/ThemeProvider';
 import { MapPin } from 'lucide-react';
 
 export function LocationMap({ point, route=null, points=null, onPick, selection=null }: {
-  point:Point|null;route?:Route|null;points?:{pickup:Position;dropoff:Position}|null;
+  point:Point|null;route?:Route|null;points?:{pickup?:Position;dropoff?:Position}|null;
   onPick?:(point:Position)=>void;selection?:Position|null;
 }) {
   const node=useRef<HTMLDivElement>(null), instance=useRef<MapLibre|null>(null);

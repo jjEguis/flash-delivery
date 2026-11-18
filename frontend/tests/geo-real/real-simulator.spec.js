@@ -71,7 +71,7 @@ test('simulador vial → OSRM → API real → sesiones independientes',async({b
       await recipient.waitForTimeout(250); // Termina la transición de tema antes de guardar la evidencia.
       await recipient.screenshot({path:join(directory,'destinatario-oscuro-390.png'),fullPage:true});
     }
-    await expect(page.getByText('Recorrido finalizado. Esto no marca el pedido como entregado.')).toBeVisible({timeout:110000});
+    await expect(page.getByText(/Llegaste al punto de recogida/)).toBeVisible({timeout:110000});
     for(const action of ['pickup','deliver']) {
       const response=await request.post(endpoint+'/'+action,{headers:{Authorization:'Bearer '+data.sessions.COURIER.token,'Idempotency-Key':'geo_ui_'+action}});
       expect(response.status()).toBe(200);

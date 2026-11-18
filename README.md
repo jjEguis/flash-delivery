@@ -2,7 +2,7 @@
 
 Aplicación de entregas de última milla con DynamoDB (tabla única), Redis, Python, Lambda y API Gateway, ejecutada localmente sobre MiniStack. Los comercios publican pedidos, los repartidores de la zona compiten por aceptarlos y una transacción condicional garantiza que solo uno gane. El destinatario sigue su pedido con un enlace seguro.
 
-Estado: SPEC-00 a SPEC-08 implementadas, con API HTTP completa (34 operaciones de módulos), interfaz web con reintentos, paginación y ubicación opcional, rutas OSRM locales y ETA durante entregas activas, y pruebas de backend y navegador. Consultar [especificaciones](docs/specs/README.md) y [validación](docs/validation.md).
+Estado: SPEC-00 a SPEC-08 implementadas, con API HTTP completa (34 operaciones de módulos), interfaz web con reintentos, paginación y ubicación opcional, rutas OSRM locales y ETA durante entregas activas, y pruebas de backend y navegador. SPEC-09 añade la demo guiada de registro, aprobación y ambos recorridos. Consultar [especificaciones](docs/specs/README.md) y [validación](docs/validation.md).
 
 ```text
 flash-delivery/
@@ -132,3 +132,7 @@ Desde `frontend/`, ejecutar `npm ci` y `npm run build:local` para habilitar los 
 Preparar primero el extracto OSRM como indica el arranque local. Crear un pedido nuevo con puntos de recogida/entrega seleccionados en el mapa, aceptarlo con un repartidor y abrir «Compartir ubicación». Seleccionar el inicio de la demo para recorrer calles, ajustar velocidad, pausar y reanudar. Las rutas cambian al recoger y la ETA es aproximada, sin tráfico real. El comercio abre el mapa desde el detalle; el destinatario, desde su enlace de seguimiento. Solo se comparten posiciones durante entregas activas, con consentimiento, expiración y revocación. `npm run build` excluye los controles de simulación. [Flujo completo, pruebas y límites](docs/geo/README.md).
 
 La aplicación de :8080 utiliza el diseño unificado en acceso, registro, comercio, repartidor, administración, seguimiento y mapas. Comparte Manrope, tokens, navegación y selector Sistema/Claro/Oscuro con la base visual aprobada. Los mapas se abren dentro de la misma interfaz, sin pestañas adicionales. [Alcance y capturas](docs/frontend/UNIFICACION.md).
+
+## Demo guiada de principio a fin (SPEC-09)
+
+En el acceso, abrir «Cómo probar la entrega completa». Para demostrar aprobación, registrar usuarios nuevos de comercio y repartidor, habilitarlos desde una tercera sesión administrativa y continuar con el pedido. Los perfiles de ejemplo ya vienen habilitados. [Pasos, resultados esperados y prueba real](docs/demo/README.md).

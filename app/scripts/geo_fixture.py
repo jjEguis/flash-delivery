@@ -38,14 +38,36 @@ def create(path):
         raise
 
 
+def journey(path):
+    """Reservar identificadores para registrar/habilitar desde la UI, sin preaprobar."""
+    from lambdas.shared.config.settings import Settings
+    Settings.load()
+    run = uuid4().hex[:8]
+    actors = {'STORE': 'journey_s'+run, 'COURIER': 'journey_c'+run}
+    data = {'actors': actors, 'zone': 'oriente', 'adminCode': os.getenv('DEV_ADMIN_CODE', 'admin-local'),
+            'created': {'stores':[actors['STORE']], 'couriers':[actors['COURIER']], 'orders':[], 'requests':[]}}
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'w') as output:
+        json.dump(data, output)
+
+
 def cleanup(path):
     data = json.loads(Path(path).read_text())
     api = Api()
     api.created = {key:{tuple(value) if isinstance(value,list) else value for value in values} for key,values in data['created'].items()}
+    if data.get('zone'):
+        from lambdas.shared.infrastructure.clients import redis_client
+        from lambdas.availability.repository import zone_key
+        cache = redis_client()
+        try:
+            for courier in api.created['couriers']:
+                cache.zrem(zone_key(data['zone']), courier)
+        finally:
+            cache.close()
     api.cleanup()
     Path(path).unlink()
 
 
 if __name__ == '__main__':
     operation, path = sys.argv[1:]
-    {'create':create, 'cleanup':cleanup}[operation](path)
+    {'create':create, 'journey':journey, 'cleanup':cleanup}[operation](path)

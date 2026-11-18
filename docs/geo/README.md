@@ -30,12 +30,14 @@ Preparación observada: descarga **2026-11-17**, datos hasta **2026-11-16T21:22:
 
 ## Demostración en sesiones independientes
 
+Para probar también registro y aprobación administrativa, seguir la [demo guiada completa](../demo/README.md) con usuarios nuevos.
+
 1. Comercio `tienda_demo`: crear un pedido, escribir direcciones y abrir «Seleccionar puntos en el mapa». Elegir recogida y entrega o pulsar «Usar puntos de demo de Santa Marta». Publicar y conservar el enlace público.
 2. En otro perfil de navegador, repartidor `rep_demo1`: activar disponibilidad, aceptar el pedido y abrir «Compartir ubicación».
 3. Elegir «Simulación de desarrollo», seleccionar un inicio en el mapa o «Usar inicio de demo en Santa Marta», marcar el consentimiento e iniciar. El primer punto se envía por API y el backend calcula la ruta vial a recogida.
 4. Ajustar velocidad (1–25 m/s), pausar, reanudar o reiniciar. El avance usa distancia acumulada y reloj monotónico; las muestras usan UTC y secuencia. No se superponen envíos. «Simular desvío» desplaza tres muestras aproximadamente 110 m al norte; el recálculo espera el cooldown de 30 s y puede fallar si no hay vía cercana. Eso conserva la ruta anterior desactualizada y oculta la ETA.
 5. Comercio abre el mapa desde el detalle; destinatario entra desde el enlace público. Ambos ven muestras por API, ruta recorrida/pendiente, estado, última actualización y ETA aproximada. Todos los mapas etiquetan SIMULATED.
-6. «Marcar recogido» cambia a ruta hacia destino. El final de la simulación no entrega el pedido. «Marcar entregado» usa el comando autorizado existente y termina el seguimiento. También se oculta al cancelar/fallar, aunque falle la limpieza Redis.
+6. «Marcar recogido» detiene la simulación anterior y prepara la ruta hacia destino. Pulsar Iniciar simulación de nuevo usa la última posición y conserva velocidad; si caducó, elegir un nuevo inicio. Al completar cada recorrido el mensaje indica confirmar recogida o entrega. El final de la simulación no entrega el pedido. «Marcar entregado» usa el comando autorizado existente y termina el seguimiento. También se oculta al cancelar/fallar, aunque falle la limpieza Redis.
 7. Para GPS, elegir «GPS del navegador», consentir y activar. Denegar permiso permite continuar por estados. Detener, salir del mapa o cerrar sesión libera watcher y temporizadores. GPS exige HTTPS o localhost; no se promete continuidad con la pestaña cerrada.
 
 El simulador se habilita con `build:local`/Vite DEV y, además, `ENVIRONMENT=local` + `TRACKING_SIMULATION_ENABLED=true` en backend. CDK utiliza false por defecto; Compose lo activa explícitamente para la demo local. `npm run build` omite los controles de demo. Reiniciar una pestaña no reanuda automáticamente ni salta al destino.
