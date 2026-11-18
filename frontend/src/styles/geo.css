@@ -50,3 +50,11 @@
 .maplibregl-ctrl-attrib {font-family:Manrope,sans-serif;font-size:11px;}
 :root[data-theme='dark'] .maplibregl-ctrl-group {background:var(--surface);}
 :root[data-theme='dark'] .maplibregl-ctrl-icon {filter:invert(1);}
+.geo-coordinate-fields {border:1px solid var(--border);border-radius:var(--radius-control);padding:12px;display:grid;gap:16px;margin-top:16px;}
+.geo-coordinate-fields legend {padding-inline:6px;font-weight:700;}
+.geo-coordinate-fields label {display:grid;gap:4px;font-size:13px;margin-top:10px;}
+.geo-coordinate-fields input {width:100%;min-width:0;min-height:48px;background:var(--surface);color:var(--ink);border:1px solid var(--border);border-radius:8px;padding:10px;font:inherit;}
+.geo-coordinate-fields input:user-invalid {border-color:var(--danger);}
+.geo-next-step p {margin:12px 0;line-height:1.7;}
+.geo-next-step .button {width:100%;min-height:48px;}
+.live-app .geo-coordinate-fields input {font-size:max(1rem,1em);}

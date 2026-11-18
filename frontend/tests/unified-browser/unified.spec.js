@@ -128,3 +128,45 @@ test('nuevo pedido incluye puntos seleccionados sin inferirlos de la dirección'
   expect(payload.dropoffLocation).toEqual({latitude:11.235,longitude:-74.19});
   expect(payload.pickupAddress).toBe('Dirección textual de recogida');
 });
+
+test('selección incompleta de puntos se anuncia al publicar y no se descarta silenciosamente',async({page})=>{
+  await fixture(page,{role:'STORE'});
+  let payload;
+  await page.route('**/api/v1/orders',async route=>{payload=route.request().postDataJSON();return route.fulfill({status:201,json:{...orders[0],trackingToken:'o_pending.secret'}});});
+  await page.goto('/#/comercio');
+  await page.getByLabel('Recoger en',{exact:true}).fill('Recogida textual');
+  await page.getByLabel('Entregar en',{exact:true}).fill('Entrega textual');
+  await page.getByText('Seleccionar puntos en el mapa (opcional)',{exact:true}).click();
+  await expect(page.locator('#order-points-error')).toBeHidden();
+  await page.getByLabel('Latitud de recogida',{exact:true}).fill('11.237');
+  await expect(page.locator('#order-points-error')).toBeHidden();
+  await page.getByRole('button',{name:'Publicar pedido',exact:true}).click();
+  await expect(page.locator('#order-points-error')).toBeFocused();
+  await expect(page.locator('#order-points-error')).toHaveText(/Completa las coordenadas de recogida y entrega/);
+  expect(payload).toBeUndefined();
+  await page.getByRole('button',{name:'Quitar puntos',exact:true}).click();
+  await expect(page.locator('#order-points-error')).toBeHidden();
+  await page.getByRole('button',{name:'Publicar pedido',exact:true}).click();
+  await expect.poll(()=>payload).toBeTruthy();
+  expect(payload.pickupLocation).toBeUndefined();expect(payload.dropoffLocation).toBeUndefined();
+});
+
+test('la guía de acceso explica sesiones y aprobación sin revelar código configurado',async({page})=>{
+  await fixture(page,{signedIn:false});await page.goto('/');
+  await page.getByText('Cómo probar la entrega completa',{exact:true}).click();
+  await expect(page.getByText(/Dos pestañas del mismo perfil comparten el usuario/)).toBeVisible();
+  await expect(page.getByText(/Para probar la aprobación usa usuarios nuevos/)).toBeVisible();
+  await expect(page.getByText('admin-local',{exact:true})).toHaveCount(0);
+});
+
+for(const theme of ['light','dark'])test(`puntos numéricos accesibles y sin desbordes en móvil: ${theme}`,async({page})=>{
+  await fixture(page,{role:'STORE',theme});await page.setViewportSize({width:360,height:900});
+  await page.route('https://tile.openstreetmap.org/**',r=>r.abort());
+  await page.goto('/#/comercio');
+  await page.getByText('Seleccionar puntos en el mapa (opcional)',{exact:true}).click();
+  await page.getByLabel('Latitud de recogida',{exact:true}).fill('91');
+  await page.getByRole('button',{name:'Quitar puntos',exact:true}).click();
+  await expect(page.getByLabel('Latitud de recogida',{exact:true})).toHaveAttribute('aria-invalid','false');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  expect((await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa','wcag22aa']).analyze()).violations).toEqual([]);
+});

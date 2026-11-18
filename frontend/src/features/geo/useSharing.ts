@@ -8,6 +8,7 @@ export function useSharing(orderId: string, session: Session | null, status: str
   const [mode, setMode] = useState<Mode>('idle');
   const [message, setMessage] = useState('Ubicación desactivada. Tú decides cuándo compartir.');
   const modeRef = useRef<Mode>('idle');
+  const previousStatus=useRef(status);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const watch = useRef<number | undefined>(undefined);
   const distance = useRef(0);
@@ -63,18 +64,24 @@ export function useSharing(orderId: string, session: Session | null, status: str
     changeMode('simulating');
     const current=generation.current;
     let previousTime=performance.now();
+    let resetRequired=restart;
     const tick=async()=>{
       if (generation.current!==current || modeRef.current!=='simulating') return;
       try {
         if (!road.current) {
           if (!origin) return;
+          if (resetRequired) {
+            await geoApi(endpoint,session,'DELETE');
+            if (generation.current!==current) return;
+            resetRequired=false;
+          }
           const accepted=await send({...origin,accuracyMeters:10,recordedAt:new Date().toISOString(),source:'SIMULATED'},current);
           if (generation.current!==current) return;
           if (!accepted) {timer.current=setTimeout(tick,retryDelay.current || 4000);return;}
           const response=await geoApi<RouteResult>(`/orders/${encodeURIComponent(orderId)}/route`,session);
           if (generation.current!==current) return;
-          if (!response.route) {changeMode('paused');setMessage('No hay ruta vial disponible. Revisa los puntos del pedido y reintenta.');return;}
-          road.current=response.route;distance.current=0;previousTime=performance.now();
+          if (!response.route || response.route.phase!==status) {changeMode('idle');setMessage('No hay ruta vial disponible para esta fase. Revisa los puntos del pedido y reintenta en unos segundos.');return;}
+          road.current=response.route;distance.current=response.route.progressMeters || 0;previousTime=performance.now();
         } else {
           const now=performance.now();
           const next=Math.min(totalMeters(road.current.geometry.coordinates),distance.current+Math.min(10,(now-previousTime)/1000)*speed.current);
@@ -89,7 +96,7 @@ export function useSharing(orderId: string, session: Session | null, status: str
           if (generation.current!==current) return;
           const changed=!!response.route && response.route.routeVersion!==road.current.routeVersion;
           if (changed && response.route) {road.current=response.route;distance.current=0;}
-          if (!changed && accepted && !deviating && next>=totalMeters(road.current.geometry.coordinates)) {changeMode('finished');setMessage('Recorrido finalizado. Esto no marca el pedido como entregado.');return;}
+          if (!changed && accepted && !deviating && next>=totalMeters(road.current.geometry.coordinates)) {changeMode('finished');setMessage(status==='ASSIGNED'?'Llegaste al punto de recogida. Pulsa «Marcar recogido» para preparar el recorrido a entrega.':'Llegaste al punto de entrega. Pulsa «Marcar entregado» para completar el pedido.');return;}
         }
       } catch (error) {
         if (generation.current!==current) return;
@@ -101,7 +108,7 @@ export function useSharing(orderId: string, session: Session | null, status: str
       }
     };
     timer.current=setTimeout(tick,4000);
-  },[session,status,halt,send,orderId]);
+  },[session,status,halt,send,orderId,endpoint]);
   const pause = () => { halt(); changeMode('paused'); setMessage('Simulación pausada. La última muestra caducará si no reanudas.'); };
   const gps = () => {
     if (!session || !active(status)) return;
@@ -122,8 +129,22 @@ export function useSharing(orderId: string, session: Session | null, status: str
     }, { enableHighAccuracy:false, maximumAge:0, timeout:15000 }); }
     catch { halt(); changeMode('idle'); setMessage('No se pudo usar el GPS. Puedes continuar por estados.'); }
   };
+  const prepareTransition=()=>{
+    if (modeRef.current==='gps') return;
+    halt();road.current=null;distance.current=0;changeMode('idle');
+    setMessage('Envío pausado. Confirma el estado del pedido antes de iniciar el siguiente recorrido.');
+  };
   useEffect(() => {
+    const changed=active(previousStatus.current) && active(status) && previousStatus.current!==status;
+    previousStatus.current=status;
     if (!active(status)) { halt(); modeRef.current='idle'; setMode('idle'); }
+    else if (changed) {
+      road.current=null;distance.current=0;
+      if (modeRef.current!=='gps') {
+        halt();changeMode('idle');
+        setMessage('Pedido recogido. Inicia el recorrido a entrega desde tu última posición compartida.');
+      }
+    }
   }, [status, halt]);
   useEffect(() => {
     const leave = () => {
@@ -136,5 +157,5 @@ export function useSharing(orderId: string, session: Session | null, status: str
     window.addEventListener('pagehide',leave); window.addEventListener('storage',sessionChange);
     return () => { window.removeEventListener('pagehide',leave); window.removeEventListener('storage',sessionChange); leave(); };
   }, [endpoint, session, halt]);
-  return {mode,message,simulate,pause,stop,gps,setSpeed:(value:number)=>{speed.current=value;},deviate:()=>{deviation.current=3;setMessage("Escenario de desvío: tres muestras a 110 m de la ruta.");}};
+  return {mode,message,simulate,pause,stop,gps,prepareTransition,setSpeed:(value:number)=>{speed.current=value;},deviate:()=>{deviation.current=3;setMessage("Escenario de desvío: tres muestras a 110 m de la ruta.");}};
 }

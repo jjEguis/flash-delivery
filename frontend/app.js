@@ -93,7 +93,16 @@ function home() {
       </form></section>
       <aside class="card auth-help"><h2>¿Esperas una entrega?</h2><p class="muted" style="margin-top:12px">Consulta su avance con el enlace que te compartió el comercio.</p>
         <form id="trackForm"><label for="token">Código de seguimiento</label><input id="token" required placeholder="Pega tu enlace o código"><button class="btn btn--block">Ver estado</button></form>
-      </aside></div>`;
+      </aside></div>
+    <details class="demo-guide"><summary>Cómo probar la entrega completa</summary>
+      <p>Usa sesiones independientes: comercio en una ventana normal, repartidor en incógnito y administrador en otro perfil o navegador. Dos pestañas del mismo perfil comparten el usuario.</p>
+      <ol><li><strong>Registrar.</strong> Entra con un usuario nuevo, elige Comercio o Repartidor y registra su nombre y zona.</li>
+      <li><strong>Habilitar.</strong> Comparte el identificador de registro con el administrador. Después pulsa «Ya me habilitaron, actualizar».</li>
+      <li><strong>Publicar.</strong> El comercio crea un pedido con recogida y entrega en el mapa para probar rutas.</li>
+      <li><strong>Aceptar y recorrer.</strong> El repartidor activa disponibilidad, acepta y abre «Compartir ubicación». Mantén esa vista abierta durante la simulación.</li>
+      <li><strong>Recoger y entregar.</strong> Recorre la ruta a recogida, marca recogido, inicia la ruta a entrega y marca entregado. El simulador no cambia estos estados por sí solo.</li></ol>
+      <p>Las cuentas de ejemplo ya están habilitadas. Para probar la aprobación usa usuarios nuevos. La demo sigue funcionando por estados sin compartir ubicación.</p>
+    </details>`;
   let role = "STORE";
   app.querySelectorAll("[data-role]").forEach((b) => b.addEventListener("click", () => {
     role = b.dataset.role;
@@ -139,7 +148,8 @@ function waiting(kind, id) {
   app.innerHTML = `<section class="card" style="max-width:560px;margin:0 auto">
     <h1>Tu registro está en revisión</h1><div class="notice" style="margin-top:20px">Tu ${kind} está pendiente de habilitación.</div>
     <p>Comparte este identificador con un administrador:</p>
-    <p class="mono" style="margin:10px 0 4px;font-size:1.1rem">${esc(id)}</p>
+    <label for="registrationId">Identificador para el administrador</label><input id="registrationId" value="${esc(id)}" readonly autocomplete="off" spellcheck="false">
+    <p class="muted">En otra sesión, el administrador entra a Administración, busca la sección ${kind==='comercio'?'Comercios':'Repartidores'}, introduce este identificador y pulsa «Habilitar». Después actualiza aquí. La aprobación no es automática.</p>
     <button class="btn btn--block btn--ghost" data-act="reload">Ya me habilitaron, actualizar</button></section>`;
 }
 
@@ -179,11 +189,15 @@ async function storeView() {
       </section>
       <section class="card" id="store-presence" tabindex="-1"><div class="card__head"><h2>Repartidores en tu zona</h2><button class="btn btn--ghost btn--sm" id="refreshPresence">Actualizar</button></div><div class="list" id="presence"></div></section>
     </div><aside class="sticky"><section class="card" id="new-delivery" tabindex="-1"><h2>Nuevo pedido</h2><p class="muted" style="margin-top:8px">Indica dónde recogerlo y a dónde llevarlo.</p>
-      <form id="newOrder"><label for="pickup">Recoger en</label><input id="pickup" required maxlength="300" placeholder="Dirección del comercio"><label for="dropoff">Entregar en</label><input id="dropoff" required maxlength="300" placeholder="Dirección de destino"><div id="order-points"></div><label for="fee">Tarifa (COP)</label><input id="fee" required type="number" min="100" max="100000000" step="100" value="8000"><div class="highlight"><span>Tarifa de la entrega</span><strong id="feeView">$8.000</strong></div><button class="btn btn--block" type="submit">Publicar pedido</button></form>
+      <form id="newOrder"><label for="pickup">Recoger en</label><input id="pickup" required maxlength="300" placeholder="Dirección del comercio"><label for="dropoff">Entregar en</label><input id="dropoff" required maxlength="300" placeholder="Dirección de destino"><div id="order-points"></div><p id="order-points-error" class="notice" tabindex="-1" hidden></p><label for="fee">Tarifa (COP)</label><input id="fee" required type="number" min="100" max="100000000" step="100" value="8000"><div class="highlight"><span>Tarifa de la entrega</span><strong id="feeView">$8.000</strong></div><button class="btn btn--block" type="submit">Publicar pedido</button></form>
     </section></aside></div>`;
   app.querySelector('[data-new-delivery]').addEventListener('click',event=>{event.preventDefault();$('#new-delivery').scrollIntoView({block:'start'});$('#pickup').focus({preventScroll:true});});
-  let orderPoints = null;
-  disposeGeo = mountOrderPoints($("#order-points"), points => { orderPoints = points; });
+  let orderPoints = null, orderPointsError = '';
+  disposeGeo = mountOrderPoints($("#order-points"), (points, problem) => {
+    orderPoints = points; orderPointsError = problem;
+    const error = $("#order-points-error");
+    if (error && !problem) { error.hidden = true; error.textContent = ''; }
+  });
   const row = order => `<tr><td><button type="button" class="table-detail" data-order="${esc(order.orderId)}">${short(order.orderId)}<span class="sr-only"> Ver detalle del pedido ${esc(order.orderId)}</span></button><span class="id">${when(order.createdAt)}</span></td><td>${esc(order.pickupAddress || 'Ver detalle')}</td><td>${badge(order.status)}</td><td class="table-fee">${money(order.feeMinor)}</td></tr>`;
 
   async function loadOrders(reset) {
@@ -229,6 +243,9 @@ async function storeView() {
   $("#refreshPresence").addEventListener("click", guard(loadPresence));
   $("#newOrder").addEventListener("submit", guard(async (e) => {
     e.preventDefault();
+    if (orderPointsError) {
+      const error = $("#order-points-error"); error.textContent = orderPointsError; error.hidden = false; error.focus(); return;
+    }
     const body = { pickupAddress: $("#pickup").value, dropoffAddress: $("#dropoff").value, feeMinor: Number($("#fee").value), ...(orderPoints || {}) };
     const created = await api("POST", "/orders", { body, intent: "create", validate: validCreatedOrder });
     const tokens = load(TOKENS_KEY, {});

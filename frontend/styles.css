@@ -142,3 +142,9 @@
 .live-app .layout > *, .live-app .courier-layout > * { min-width: 0; }
 @media (max-width:900px) { .live-app .layout { grid-template-columns: minmax(0,1fr); } }
 .live-app .geo-field { display: flex; flex-direction: column; gap: 8px; }
+.demo-guide {margin-top:24px;padding:20px;border:1px solid var(--border);border-radius:var(--radius-control);background:var(--surface);}
+.demo-guide summary {cursor:pointer;min-height:48px;font-weight:700;display:list-item;}
+.demo-guide p, .demo-guide li {max-width:75ch;line-height:1.8;margin-top:12px;}
+.demo-guide ol {padding-left:24px;}
+.live-app #order-points-error:focus {outline:3px solid var(--focus);outline-offset:4px;}
+.live-app #registrationId {font-size:1rem;}

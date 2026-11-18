@@ -15,6 +15,7 @@ async function setup(page,{role='COURIER',location=null,freshness='UNAVAILABLE',
   await page.route('**/api/v1/**',async route=>{
     const request=route.request(); const url=request.url();
     if(url.endsWith('/route')) return route.fulfill({json:{orderId:'o_1',status:state.status,points:{pickup:{latitude:11.237,longitude:-74.201},dropoff:{latitude:11.235,longitude:-74.19}},route:state.location ? {geometry:{type:'LineString',coordinates:[[-74.211,11.244],[-74.209,11.242],[-74.207,11.240],[-74.201,11.237]]},distanceMeters:1500,durationSeconds:150,remainingMeters:1500,etaSeconds:150,progressMeters:0,phase:state.status,routeVersion:'r1',calculatedAt:new Date().toISOString(),stale:false,offRoute:false} : null}});
+    if(request.method()==='POST' && /\/(pickup|deliver)$/.test(url)) {state.status=url.endsWith('/pickup')?'PICKED_UP':'DELIVERED';return route.fulfill({json:{orderId:state.orderId,status:state.status}});}
     if(request.method()==='POST'){
       const p=request.postDataJSON();posts.push(p);state.location=p;state.freshness='FRESH';
       return route.fulfill({status:202,json:{orderId:'o_1',recordedAt:p.recordedAt,accepted:true}});
@@ -65,7 +66,7 @@ test('simulador exige consentimiento, publica, pausa, reanuda, reinicia y detien
   await expect.poll(()=>posts.length,{timeout:7000}).toBe(3);
   expect(posts[2].latitude).toBe(posts[0].latitude);
   await page.getByRole('button',{name:'Detener y borrar ubicación'}).click();
-  await expect.poll(()=>deletes.length).toBe(1);
+  await expect.poll(()=>deletes.length).toBe(2);
   await expect(page.getByText('Sin posición disponible. No se muestran coordenadas de ejemplo.')).toBeVisible();
 });
 test('GPS no arranca sin consentimiento, denegación permite continuar por estados',async({page})=>{
@@ -134,4 +135,84 @@ test('el polling no se solapa y se detiene al cerrar la entrega',async({page})=>
   await expect(page.getByText('Entregada',{exact:true})).toBeVisible({timeout:10000});
   const stopped=calls;await page.waitForTimeout(6500);
   expect(calls).toBe(stopped);expect(maximum).toBe(1);
+});
+
+
+test('sin puntos de pedido explica el bloqueo de simulación y permite GPS',async({page})=>{
+  await setup(page);
+  await page.route('**/api/v1/**/route',r=>r.fulfill({json:{orderId:'o_1',status:'ASSIGNED',points:null,route:null}}));
+  await page.goto('/geo.html#/order/o_1');
+  await page.getByRole('checkbox').check();
+  await page.getByRole('button',{name:'Usar inicio de demo en Santa Marta'}).click();
+  await expect(page.getByRole('button',{name:'Iniciar simulación'})).toBeDisabled();
+  await expect(page.getByText(/Este pedido no tiene puntos de recogida/)).toBeVisible();
+  await page.getByLabel('Fuente').selectOption('BROWSER_GPS');
+  await page.getByRole('checkbox').check();
+  await expect(page.getByRole('button',{name:'Activar GPS'})).toBeEnabled();
+});
+
+test('ambas fases terminan por separado y la segunda parte de la última posición',async({page})=>{
+  const {state,posts}=await setup(page);
+  await page.route('**/api/v1/**/route',r=>{
+    const coordinates=state.status==='ASSIGNED'?[[-74.211,11.244],[-74.2109,11.244]]:[[-74.2109,11.244],[-74.2108,11.244]];
+    return r.fulfill({json:{orderId:'o_1',status:state.status,points:{pickup:{latitude:11.244,longitude:-74.2109},dropoff:{latitude:11.244,longitude:-74.2108}},route:state.location?{geometry:{type:'LineString',coordinates},phase:state.status,routeVersion:state.status,progressMeters:0,distanceMeters:11,remainingMeters:11,etaSeconds:2,calculatedAt:new Date().toISOString()}:null}});
+  });
+  await page.goto('/geo.html#/order/o_1');
+  await page.getByRole('button',{name:'Usar inicio de demo en Santa Marta'}).click();
+  await page.getByLabel('Velocidad de demo (m/s)').fill('25');
+  await page.getByRole('checkbox').check();await page.getByRole('button',{name:'Iniciar simulación'}).click();
+  await expect(page.getByText(/Llegaste al punto de recogida/)).toBeVisible({timeout:12000});
+  expect(state.status).toBe('ASSIGNED');
+  await expect(page.getByRole('button',{name:'Recorrido completado'})).toBeDisabled();
+  const lastPickup=posts.at(-1), before=posts.length;
+  await page.getByRole('button',{name:'Marcar recogido',exact:true}).click();
+  await expect(page.getByText('Pedido recogido. Inicia el recorrido a entrega desde tu última posición compartida.')).toBeVisible();
+  await expect(page.getByLabel('Velocidad de demo (m/s)')).toHaveValue('25');
+  await page.getByRole('button',{name:'Iniciar simulación'}).click();
+  await expect.poll(()=>posts.length,{timeout:7000}).toBeGreaterThan(before);
+  expect(posts[before].longitude).toBe(lastPickup.longitude);
+  expect(posts[before].latitude).toBe(lastPickup.latitude);
+  await expect(page.getByText(/Llegaste al punto de entrega/)).toBeVisible({timeout:7000});
+  expect(state.status).toBe('PICKED_UP');
+  await page.getByRole('button',{name:'Marcar entregado',exact:true}).click();
+  await expect(page.locator('.geo-card-heading').getByText('Entregada')).toBeVisible();
+});
+
+test('doble confirmación envía una sola acción y una lectura anterior no revierte la fase',async({page})=>{
+  const {state}=await setup(page);
+  let reads=0,actions=0,release;
+  const delayed=new Promise(resolve=>{release=resolve;});
+  await page.route('**/api/v1/**/location',async route=>{
+    reads++;const snapshot={...state};
+    if (reads===2) await delayed;
+    return route.fulfill({json:snapshot});
+  });
+  await page.route('**/api/v1/orders/o_1/pickup',async route=>{
+    actions++;await new Promise(resolve=>setTimeout(resolve,200));state.status='PICKED_UP';
+    return route.fulfill({json:{status:state.status,orderId:'o_1'}});
+  });
+  await page.goto('/geo.html#/order/o_1');
+  await expect(page.locator('.geo-card-heading').getByText('Asignada')).toBeVisible();
+  await expect.poll(()=>reads,{timeout:10000}).toBe(2);
+  await page.getByRole('button',{name:'Marcar recogido',exact:true}).evaluate(button=>{button.click();button.click();});
+  await expect(page.locator('.geo-card-heading').getByText('Recogida')).toBeVisible();
+  release();await expect.poll(()=>reads).toBeGreaterThan(2);
+  await expect(page.locator('.geo-card-heading').getByText('Recogida')).toBeVisible();
+  expect(actions).toBe(1);
+});
+
+test('confirmación incierta consulta el estado y conserva la intención al reintentar',async({page})=>{
+  const {state}=await setup(page);const keys=[];
+  await page.route('**/api/v1/orders/o_1/pickup',async route=>{
+    keys.push(await route.request().headerValue('idempotency-key'));
+    if (keys.length===1) return route.fulfill({status:503,json:{error:{message:'Fallo temporal'}}});
+    state.status='PICKED_UP';return route.fulfill({json:{orderId:'o_1',status:state.status}});
+  });
+  await page.goto('/geo.html#/order/o_1');
+  await page.getByRole('button',{name:'Marcar recogido',exact:true}).click();
+  await expect(page.getByText(/La confirmación no llegó/)).toBeVisible();
+  await expect(page.locator('.geo-card-heading').getByText('Asignada')).toBeVisible();
+  await page.getByRole('button',{name:'Marcar recogido',exact:true}).click();
+  await expect(page.locator('.geo-card-heading').getByText('Recogida')).toBeVisible();
+  expect(keys.length).toBe(2);expect(keys[0]).toBeTruthy();expect(keys[0]).toBe(keys[1]);
 });

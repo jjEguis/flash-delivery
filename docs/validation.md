@@ -1,5 +1,29 @@
 # Registro de validación
 
+## SPEC-09 — Demo guiada — 2026-11-18
+
+Partiendo de develop con SPEC-08 v2 fusionada, se implementó [SPEC-09](specs/SPEC-09-DEMO-GUIADA.md) en `feature/spec-09-demo-guiada`. [Guía de prueba manual](demo/README.md). El acceso explica sesiones separadas y registro/habilitación; la espera muestra el ID seleccionable. El formulario ofrece mapa o coordenadas y bloquea selecciones incompletas tras intentar publicar, enfocando el mensaje. Se permite continuar por estados al quitar todos los puntos.
+
+El simulador descarta geometría/progreso al pasar a PICKED_UP, conserva velocidad y usa la última posición para la siguiente fase. Su final indica recoger/entregar manualmente. Reiniciar limpia el snapshot antes de recalcular. La vista explica por qué no se puede iniciar, permite actualizar recorrido y protege comandos pendientes con la misma clave de intención. Las respuestas de consultas anteriores no pueden revertir el estado confirmado de la nueva fase.
+
+| Comprobación | Resultado |
+| --- | --- |
+| Build normal/local, TypeScript y lint | Correctos |
+| HTTP/paginación y componentes/tema | **22 + 7 passed** |
+| Regresión funcional escritorio/móvil | **10 passed** |
+| Interfaz unificada y nuevos formularios | **62 passed**; guía, foco de error, coordenadas incompletas, quitar puntos, ambos temas, móvil 360 y axe con formulario abierto |
+| Mapas, GPS y simulación | **20 passed**; incluye fases separadas, continuidad de posición, velocidad, bloqueo sin puntos, doble confirmación, lectura tardía y reintento con clave conservada |
+| Producción y encabezados de tiles | **2 passed**; se conserva exclusión de demo y Referer solo de origen |
+| Navegador con API real | **2 passed (2.2 min)**; prueba nueva de registro/aprobación/ciclo completo **49.4 s**, regresión vial anterior **1.3 min** |
+
+El flujo nuevo usa cuatro contextos independientes: comercio, repartidor, administrador y destinatario. Se registran perfiles nuevos no habilitados, el administrador introduce sus IDs y los habilita desde la interfaz, el comercio publica con coordenadas numéricas y el repartidor acepta, recorre ambas fases y marca entregado. La vista pública confirma el cierre. Datos aislados y limpieza por claves propias, sin restablecer perfiles del usuario.
+
+Se leyeron frontend-design y modern-web-guidance (`forms`, `accessible-error-announcement`). Se inspeccionó la captura real del [repartidor móvil al completar el recorrido](evidencias/spec09/demo-repartidor-entrega-390.png), además de [comercio](evidencias/spec09/comercio-claro-1440.png) y [destinatario](evidencias/spec09/destinatario-oscuro-390.png). Se actualizó el plan para retirar pendientes históricos ya resueltos y delimitar el siguiente incremento: listado administrativo y su contrato.
+
+No se modificaron módulos de negocio, API, infraestructura ni esquema NoSQL; no se repitió la suite Python de negocio. El auxiliar `scripts.geo_fixture journey` solo reserva identificadores nuevos y metadata privada para la prueba UI; no crea/aprueba perfiles. Las validaciones reales anteriores permanecen disponibles. Las suites Playwright paralelas se ejecutaron con directorios de salida separados en /tmp para evitar colisiones de trazas.
+
+Límites conservados: aprobación por ID (sin bandeja de solicitudes todavía), acceso local de desarrollo, sesiones independientes, posición caducable y simulación ligada a la vista abierta. La ETA no es el cronómetro del simulador. GPS físico y lector de pantalla humano siguen pendientes; tiles externos y advertencia de tamaño de MapLibre continúan documentados.
+
 ## Corrección de bloqueo de tiles — 2026-11-17
 
 La captura del usuario mostró tiles de OSM con aviso 403. Se identificó `Referrer-Policy: no-referrer` en el servidor estático, incompatible con la identificación de origen exigida por el proveedor. El HTML y el worker ahora reciben `strict-origin`: los tiles envían únicamente el origen, sin ruta, query ni fragmento de seguimiento. Las respuestas de API y el cliente `geoApi` conservan `no-referrer`. Se mantiene el proveedor y su caché, sin rotar hosts ni añadir proxies.
