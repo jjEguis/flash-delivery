@@ -19,8 +19,9 @@ def me(request):
 
 
 def set_enabled(request):
+    data = request.json()
     return 200, service.set_store_enabled(shared_adapter(), request.actor, request.path_params["storeId"],
-                                          request.json().get("enabled"))
+                                          data.get("enabled"), expected_version=data.get("expectedVersion"), reason=data.get("reason"))
 
 
 ROUTES = {

@@ -12,7 +12,10 @@
       "storeId": "SEED_demo_store",
       "updatedAt": "2026-01-01T00:00:00.000000Z",
       "version": 1,
-      "zoneId": "SEED_demo_zone"
+      "zoneId": "SEED_demo_zone",
+      "approvalStatus": "ENABLED",
+      "GSI2PK": "ADMIN#STORE#ENABLED",
+      "GSI2SK": "CREATED#2026-01-01T00:00:00.000000Z#SEED_demo_store"
     },
     {
       "PK": "COURIER#SEED_demo_c1",
@@ -27,7 +30,10 @@
       "schemaVersion": 1,
       "updatedAt": "2026-01-01T00:00:00.000000Z",
       "version": 1,
-      "zoneId": "SEED_demo_zone"
+      "zoneId": "SEED_demo_zone",
+      "approvalStatus": "ENABLED",
+      "GSI2PK": "ADMIN#COURIER#ENABLED",
+      "GSI2SK": "CREATED#2026-01-01T00:00:00.000000Z#SEED_demo_c1"
     },
     {
       "GSI1PK": "STORE#SEED_demo_store",
@@ -147,6 +153,22 @@
       "updatedAt": "2026-01-01T00:03:05.000000Z",
       "version": 2,
       "zoneId": "SEED_demo_zone"
+    },
+    {
+      "PK": "PROFILE_AUDIT#STORE#SEED_demo_store",
+      "SK": "EVENT#2026-01-01T00:00:01.000000Z#SEED_audit_1",
+      "entityType": "PROFILE_AUDIT",
+      "schemaVersion": 1,
+      "version": 1,
+      "profileKind": "STORE",
+      "profileId": "SEED_demo_store",
+      "eventId": "SEED_audit_1",
+      "actorId": "SEED_admin",
+      "occurredAt": "2026-01-01T00:00:01.000000Z",
+      "fromStatus": "PENDING",
+      "toStatus": "ENABLED",
+      "profileVersion": 2,
+      "reason": "Ejemplo sintético independiente de aprobación"
     }
   ],
   "schemaVersion": 1

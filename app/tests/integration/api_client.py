@@ -53,6 +53,19 @@ class Api:
         doomed = [keys.profile(keys.store(s)) for s in self.created["stores"]]
         for c in self.created["couriers"]:
             doomed += [keys.profile(keys.courier(c)), keys.active(c)]
+        for kind, collection in (("STORE", "stores"), ("COURIER", "couriers")):
+            for identity in self.created[collection]:
+                cursor = None
+                while True:
+                    arguments = {"KeyConditionExpression": "PK = :pk",
+                                 "ExpressionAttributeValues": serialize({":pk": f"PROFILE_AUDIT#{kind}#{identity}"})}
+                    if cursor:
+                        arguments["ExclusiveStartKey"] = cursor
+                    page = adapter.query(**arguments)
+                    doomed += [{"PK": e["PK"]["S"], "SK": e["SK"]["S"]} for e in page["Items"]]
+                    cursor = page.get("LastEvaluatedKey")
+                    if not cursor:
+                        break
         for order_id in self.created["orders"]:
             order = adapter.get_item(Key=serialize(keys.meta(order_id)), ConsistentRead=True).get("Item")
             doomed.append(keys.meta(order_id))

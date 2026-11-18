@@ -5,7 +5,15 @@ from decimal import Decimal
 from boto3.dynamodb.types import TypeSerializer, TypeDeserializer
 from lambdas.shared.storage import keys
 
+APPROVAL_STATES = {"PENDING", "ENABLED", "SUSPENDED"}
+
+
+def profile_status(item):
+    return item.get("approvalStatus", "ENABLED" if item["enabled"] else "PENDING" if item.get("version", 1) == 1 else "SUSPENDED")
+
+
 REQUIRED = {
+    "PROFILE_AUDIT": {"profileKind", "profileId", "eventId", "actorId", "occurredAt", "fromStatus", "toStatus", "profileVersion", "reason"},
     "TRACKING_ACCESS": {"orderId", "nonce", "expiresAt", "revoked"},
     "STORE": {"storeId", "ownerId", "zoneId", "name", "enabled", "createdAt", "updatedAt"},
     "COURIER": {"courierId", "ownerId", "zoneId", "name", "enabled", "available", "createdAt", "updatedAt"},
@@ -70,10 +78,13 @@ def layout(kind, data):
     """Claves calculadas: el llamador nunca puede inyectar índices arbitrarios."""
     if kind == "TRACKING_ACCESS":
         return {"PK": keys.order(data["orderId"]), "SK": "TRACKING"}
-    if kind == "STORE":
-        return keys.profile(keys.store(data["storeId"]))
-    if kind == "COURIER":
-        return keys.profile(keys.courier(data["courierId"]))
+    if kind == "PROFILE_AUDIT":
+        return {"PK": f"PROFILE_AUDIT#{data['profileKind']}#{keys.identifier(data['profileId'])}",
+                "SK": f"EVENT#{data['occurredAt']}#{data['eventId']}"}
+    if kind in {"STORE", "COURIER"}:
+        identity = data["storeId" if kind == "STORE" else "courierId"]
+        return {**keys.profile(keys.store(identity) if kind == "STORE" else keys.courier(identity)),
+                "GSI2PK": f"ADMIN#{kind}#{profile_status(data)}", "GSI2SK": keys.created(data["createdAt"], identity)}
     if kind == "ACTIVE_ASSIGNMENT":
         return keys.active(data["courierId"])
     if kind == "ORDER_EVENT":
@@ -110,10 +121,12 @@ def validate(item):
     if type(item.get("version")) is not int or item["version"] < 1:
         raise ValueError("version debe ser entero positivo")
     optional = {"courierId", "pickupCoordinates", "dropoffCoordinates"} if kind == "ORDER" else set()
+    if kind in {"STORE", "COURIER"}:
+        optional = {"approvalStatus"}
     allowed = REQUIRED[kind] | optional | {"entityType", "schemaVersion", "version", "PK", "SK", "GSI1PK", "GSI1SK", "GSI2PK", "GSI2SK"}
     if item.keys() - allowed:
         raise ValueError("Atributos fuera del esquema")
-    for name in ("storeId", "courierId", "orderId", "ownerId", "zoneId", "eventId", "requestId"):
+    for name in ("storeId", "courierId", "orderId", "ownerId", "zoneId", "eventId", "requestId", "actorId", "profileId"):
         if name in item:
             keys.identifier(item[name])
     for name in ("createdAt", "updatedAt", "assignedAt", "occurredAt"):
@@ -121,6 +134,15 @@ def validate(item):
             raise ValueError(f"{name} debe estar en UTC con seis decimales y sufijo Z")
     if "status" in item:
         keys.status(item["status"])
+    if kind in {"STORE", "COURIER"}:
+        approval = profile_status(item)
+        if not isinstance(approval, str) or approval not in APPROVAL_STATES or item['enabled'] != (approval == 'ENABLED'):
+            raise ValueError("Estado de aprobación incompatible con enabled")
+    if kind == "PROFILE_AUDIT":
+        if any(not isinstance(item[field], str) for field in ('profileKind', 'fromStatus', 'toStatus')) or item['profileKind'] not in {'STORE', 'COURIER'} or item['fromStatus'] not in APPROVAL_STATES or item['toStatus'] not in APPROVAL_STATES:
+            raise ValueError("Auditoría de perfil inválida")
+        if type(item['profileVersion']) is not int or item['profileVersion'] < 2 or not isinstance(item['reason'], str) or not 1 <= len(item['reason'].strip()) <= 300:
+            raise ValueError("Motivo/versión de auditoría inválidos")
     if kind == "TRACKING_ACCESS":
         if not isinstance(item["nonce"], str) or not re.fullmatch(r"[A-Za-z0-9_-]{43}", item["nonce"]):
             raise ValueError("Nonce inválido")
@@ -186,4 +208,6 @@ def make_item(kind, **data):
             data[name] = keys.timestamp(data[name])
     if not REQUIRED[kind] <= data.keys():
         raise ValueError("Faltan atributos obligatorios")
+    if kind in {"STORE", "COURIER"}:
+        data.setdefault("approvalStatus", profile_status(data))
     return validate({**data, **layout(kind, data)})

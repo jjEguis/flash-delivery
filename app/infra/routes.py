@@ -4,6 +4,14 @@ Lo consumen el stack CDK (rutas de API Gateway), los handlers (su router) y las 
 de contrato contra docs/api/openapi.json, de modo que no pueden desalinearse.
 """
 ROUTES = {
+    "approvals": [
+        "GET /api/v1/admin/stores",
+        "GET /api/v1/admin/couriers",
+        "GET /api/v1/admin/stores/{storeId}",
+        "GET /api/v1/admin/couriers/{courierId}",
+        "GET /api/v1/admin/stores/{storeId}/events",
+        "GET /api/v1/admin/couriers/{courierId}/events",
+    ],
     "identity": [
         "POST /api/v1/auth/dev-login",
         "GET /api/v1/auth/me",

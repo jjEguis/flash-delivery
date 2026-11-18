@@ -1,0 +1,26 @@
+.approvals { margin-block: 1rem 1.5rem; }
+.approvals-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.25rem;margin-top:1rem}
+.approval-heading {display:flex;align-items:center;justify-content:space-between;gap:1rem}
+.approval-heading h2 {margin:0}
+.approval-list {min-width:0}
+.approval-list label {margin-top:1rem}
+.approval-rows {list-style:none;padding:0;margin:1rem 0}
+.approval-rows li {display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:1rem 0;border-bottom:1px solid var(--border)}
+.approval-rows li>div {display:grid;gap:.35rem;min-width:0;overflow-wrap:anywhere}
+.approval-rows button {flex-shrink:0}
+.approval-empty {padding:1.5rem 0;color:var(--muted)}
+.approval-status {font-size:.8rem;font-weight:700;width:fit-content;padding:.2rem .5rem;border:1px solid currentColor;border-radius:.5rem}
+.approval-PENDING {color:#9b5d12}.approval-ENABLED {color:#087d62}.approval-SUSPENDED {color:#aa3947}
+[data-theme=dark] .approval-PENDING {color:#f2c57f}[data-theme=dark] .approval-ENABLED {color:#5ae0bd}[data-theme=dark] .approval-SUSPENDED {color:#ffa6b0}
+.approval-dialog {margin:auto;width:min(640px,calc(100% - 2rem));max-height:calc(100dvh - 2rem);padding:1.5rem;border:1px solid var(--border);border-radius:1rem;background:var(--surface);color:var(--ink);overflow:auto}
+.approval-dialog:modal {overscroll-behavior:contain}
+.approval-dialog::backdrop {background:rgb(6 24 24 / .65);overflow:hidden;overscroll-behavior:contain}
+.approval-dialog dl {display:grid;grid-template-columns:auto minmax(0,1fr);gap:.5rem 1rem;margin-block:1rem}
+.approval-dialog dd {margin:0;overflow-wrap:anywhere}
+.approval-dialog h3 {margin-top:1.25rem}
+.approval-dialog textarea {width:100%;min-height:90px}
+.approval-actions {display:flex;flex-wrap:wrap;gap:.75rem;margin-top:1rem}
+.approval-history {padding-left:1.25rem;overflow-wrap:anywhere}
+.approval-history li {padding-block:.75rem;border-bottom:1px solid var(--border)}
+.approval-history p {margin-block:.4rem}
+@media(max-width:760px){.approvals-grid{grid-template-columns:1fr}.approval-rows li{align-items:start;flex-direction:column}.approval-heading{gap:.5rem}.approval-dialog{padding:1rem}}

@@ -10,9 +10,10 @@ Todos los ítems requieren `entityType`, `schemaVersion=1`, `version` entero pos
 
 | Tipo / propietario | Campos obligatorios además de los comunes | Opcionales | PK / SK |
 | --- | --- | --- | --- |
-| STORE / Stores | storeId, ownerId, zoneId, name, enabled, createdAt, updatedAt | Ninguno | STORE#id / PROFILE |
-| COURIER / Couriers | courierId, ownerId, zoneId, name, enabled, available, createdAt, updatedAt | Ninguno | COURIER#id / PROFILE |
+| STORE / Stores | storeId, ownerId, zoneId, name, enabled, createdAt, updatedAt | approvalStatus | STORE#id / PROFILE |
+| COURIER / Couriers | courierId, ownerId, zoneId, name, enabled, available, createdAt, updatedAt | approvalStatus | COURIER#id / PROFILE |
 | ORDER / Orders | orderId, storeId, zoneId, status, createdAt, updatedAt, pickupAddress, dropoffAddress, feeMinor, currency, trackingTokenHash | courierId; obligatorio en ASSIGNED/PICKED_UP/DELIVERED/FAILED y ausente en PENDING | ORDER#id / META |
+| PROFILE_AUDIT / Approvals | profileKind, profileId, eventId, actorId, occurredAt, fromStatus, toStatus, profileVersion, reason | Ninguno | PROFILE_AUDIT#kind#id / EVENT#timestamp#eventId |
 | ORDER_EVENT / Orders | orderId, eventId, eventType, occurredAt | Ninguno | ORDER#id / EVENT#timestamp#eventId |
 | ACTIVE_ASSIGNMENT / Couriers | courierId, orderId, assignedAt | Ninguno | COURIER#id / ACTIVE |
 | COURIER_ORDER_VIEW / Couriers | courierId, orderId, storeId, status, createdAt, updatedAt | Ninguno | COURIER#id / ORDER#id |
@@ -29,6 +30,7 @@ Los atributos GSI son obligatorios únicamente para las variantes que participan
 | ORDER, cualquier estado | STORE#storeId / ORDER#createdAt#orderId | Solo PENDING: ZONE#zoneId#OPEN / CREATED#createdAt#orderId |
 | COURIER_ORDER_VIEW | COURIER#courierId / ORDER#createdAt#orderId | Ausentes |
 | STORE_STATUS_VIEW | Ausentes | STORE#storeId#status / CREATED#createdAt#orderId |
+| STORE/COURIER PROFILE | Ausentes | ADMIN#STORE o COURIER#approvalStatus / CREATED#createdAt#id |
 | Otros tipos | Ausentes | Ausentes |
 
 No se conserva un atributo de índice como null: ambos atributos se omiten cuando no aplican. Sustituir el registro oficial de PENDING por otro estado retira las claves GSI2 de zona; su vista de comercio conserva GSI2 con la nueva partición de estado. GSI1 del pedido permanece para el historial del comercio y el de la vista courier conserva el historial del repartidor.
@@ -51,6 +53,8 @@ Los nombres usados en expresiones se aliasan (`#pk`, `#sk`, `#version`, etc.) pa
 | AP10 | Availability.list_present, ZRANGEBYSCORE + GET | couriers:available:zoneId; courier:heartbeat:courierId | Presencia efímera | Cursor score/courierId; ascendente |
 | AP11 | Tracking.get_tracking, GetItem + Query | Token → ORDER#id / META, luego ORDER#id / EVENT# | Fuerte por operación; no es snapshot común | Cursor de eventos |
 | AP12 | Analytics.get_month, GetItem | STORE#id / STATS#YYYY-MM | Fuerte | No aplica |
+| AP13 | Approvals.list_profiles, Query GSI2 + GetItem perfil | ADMIN#kind#estado / CREATED# | Eventual + relectura fuerte | Cursor; descendente |
+| AP14 | Approvals.events, Query base | PROFILE_AUDIT#kind#id / EVENT# | Fuerte | Cursor; descendente |
 
 El acceso técnico adicional `IdempotencyRepository.get_result` usa GetItem fuerte de REQUEST#scope#requestId / IDEMPOTENCY. `scope` se construye con el ID del actor y una operación versionada, por ejemplo `actor:orders.create.v1`. Retención y respuesta a reintentos quedan para SPEC-02; no se habilita TTL para estos registros.
 
@@ -96,3 +100,9 @@ Los unitarios usan moto/fakeredis y registran claves, expresiones, índice y con
 ## Extensión SPEC-08: credencial de seguimiento
 
 `TRACKING_ACCESS` usa `PK=ORDER#<id>`, `SK=TRACKING`, sin GSI. Contiene `orderId`, `nonce` aleatorio de 256 bits, `expiresAt` (epoch), `revoked`, versión y metadatos del esquema. Se crea junto a META en la transacción inicial; su revocación no modifica la versión ni las vistas del pedido. No contiene coordenadas ni el token público en claro. Su expiración es lógica, no TTL físico, para conservar la revocación. Las posiciones viven exclusivamente en Redis con TTL 120 s. AP11 añade una lectura fuerte por clave exacta de la credencial al Get de META y Query de eventos; no añade Scan. [Diseño GEO](../geo/README.md).
+
+## Aprobaciones administrativas — SPEC-10
+
+Los perfiles nuevos incluyen approvalStatus; los antiguos requieren [migración explícita](../admin/README.md). enabled sigue siendo el permiso efectivo; PENDING y SUSPENDED implican false. El GSI comparte espacio con pedidos mediante prefijos distintos. La bandeja revalida cada perfil con GetItem fuerte y puede devolver página vacía con nextCursor. Detalle y auditoría son exclusivos de ADMIN.
+
+Perfil y PROFILE_AUDIT se escriben en una transacción con versión esperada. La suspensión de repartidor añade ConditionCheck de ausencia de ACTIVE, compitiendo con la condición de elegibilidad del accept. No-op no genera eventos. La auditoría no tiene TTL ni índice; retención indefinida en la demo. No se reconstruyen hechos anteriores.

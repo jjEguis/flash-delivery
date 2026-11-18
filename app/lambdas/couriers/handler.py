@@ -45,8 +45,9 @@ def history(request):
 
 
 def set_enabled(request):
+    data = request.json()
     courier = service.set_courier_enabled(shared_adapter(), request.actor, request.path_params["courierId"],
-                                          request.json().get("enabled"))
+                                          data.get("enabled"), expected_version=data.get("expectedVersion"), reason=data.get("reason"))
     if not courier["enabled"]:
         _leave_presence(courier)
     return 200, courier
