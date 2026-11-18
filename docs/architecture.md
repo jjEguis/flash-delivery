@@ -1,22 +1,31 @@
-> Documento histórico de fase 1. Para el diseño vigente consultar [arquitectura general](ARQUITECTURA_GENERAL.md) y [especificaciones](specs/README.md). Sus diferencias no deben trasladarse a código sin reconciliación.
+# Arquitectura ejecutable — resumen técnico
 
-# Decisiones de fase 1
+Revisión: 2026-11-18, SPEC-00 a SPEC-10. La propuesta inicial fue sustituida por este resumen; su historial permanece en Git. Para estudiar las decisiones con ejemplos, leer [Arquitectura y guía de estudio](ARQUITECTURA_GENERAL.md).
 
-Monolito modular serverless. Los ocho módulos son paquetes vacíos. Los contratos de diseño v1 están en [module-contracts.md](module-contracts.md);
-los patrones de almacenamiento en [data-access-patterns.md](data-access-patterns.md).
-Todavía no existen contratos ejecutables ni módulos conectados. Ningún
-módulo debe importar implementaciones internas de otro. `shared` contiene únicamente
-configuración, fábricas técnicas y excepciones comunes futuras.
+## Componentes
 
-Una tabla con PK/SK y dos GSIs, proyección ALL y facturación bajo demanda.
-Redis expone su cliente nativo reutilizable (TTL, sets y sorted sets), sin políticas
-ni datos de disponibilidad. No hay Scan ni autenticación ni datos de negocio.
+SPA funcional híbrida: controladores JavaScript y shell/componentes React/TypeScript, compilados con Vite. `frontend/server.py` sirve design-dist y hace proxy de `/api/` a API Gateway en MiniStack. `preview.html` es referencia con fixtures, no la aplicación conectada. Los mapas viven dentro de la navegación y usan MapLibre.
 
-CDK genera CloudFormation con Lambda inline, evitando assets S3, bootstrap y CLI CDK.
-Un script boto3 aplica esa plantilla exclusivamente a MiniStack. La Lambda de salud
-no necesita permisos de datos. El entorno no admite endpoints AWS públicos ni
-credenciales distintas de test; los SDK usan endpoint explícito y no usan proxies.
+API Gateway enruta a una Lambda Python 3.12 por módulo: Identity, Stores, Couriers, Orders, Dispatch, Availability, Tracking, Analytics y Approvals. Se suman Health/Readiness. Handlers `main(event, context)`; servicios Python coordinan reglas; repositorios producen lecturas/acciones DynamoDB. No hay llamadas Lambda-a-Lambda.
 
-MiniStack ejecuta la Lambda Python como subproceso dentro de su contenedor. No requiere
-montar el socket Docker; esto no reproduce el aislamiento del runtime AWS real.
-Redis es el almacén de la aplicación, no ElastiCache ni una dependencia de emulación.
+Tabla única FlashDeliveryTable con PK/SK y GSI1/GSI2 dispersos, proyección ALL. Sus once tipos separan entidades oficiales, vistas de lectura, eventos, ACTIVE, idempotencia, credencial pública y auditoría de perfil. El índice lo replica el motor; las vistas las escribe el código en transacciones. [Modelo](data-model/README.md), [patrones](data-access-patterns.md), [contratos](module-contracts.md).
+
+Redis conserva presencia, caché mensual, última posición y snapshots/locks de rutas. OSRM 5.27.1 calcula rutas locales desde Lambda; no publica puerto al host. Los tiles son externos y los carga el navegador. Solo los puntos estáticos opcionales de recogida/entrega se guardan en DynamoDB; no hay historial GPS persistente.
+
+## Garantías y límites
+
+- Un repartidor por pedido: transición condicionada a la versión de META.
+- Una entrega activa por repartidor: creación exclusiva de COURIER#id / ACTIVE.
+- Consistencia de estado/eventos/vistas/agregado/intención: commit DynamoDB común según operación.
+- Suspensión segura: perfil y auditoría atómicos; ausencia de ACTIVE dentro del commit al suspender repartidor.
+- GetItem/Query base fuertes; GSIs eventuales. Leer no bloquea; la condición del commit resuelve carreras.
+- Redis no adjudica ni revierte pedidos. No hay transacción distribuida con Redis/OSRM.
+- Autenticación local HMAC; IAM sintetizado con permisos amplios a tabla para módulos, sin acreditar aplicación productiva en MiniStack.
+
+## Despliegue y evidencia
+
+CDK genera CloudFormation; scripts.provision crea un ZIP de runtime reproducible, publica S3 local y aplica la plantilla mediante boto3. BootstraplessSynthesizer evita un bootstrap AWS. Solo Health usa código inline; los módulos/Readiness usan el paquete. Los outputs se escriben en app/.local, fuera de Git.
+
+Compose incorpora MiniStack 1.5.36, Redis 7.4.2, cdk-dev, OSRM y web; dos servicios de preparación se activan por perfil. Red bridge local; puertos web/MiniStack/Redis en loopback. Volúmenes preservan datos en reinicio ordenado. [Entorno](ENTORNO_LOCAL.md), [compatibilidad](ministack.md).
+
+La cobertura combina unitarios sin red, integración local, carreras concurrentes y navegador con API real. Los resultados fechados y sus límites se conservan en [validación](validation.md). No hay despliegue AWS real, verificación de GPS físico ni promesa de rendimiento productivo.

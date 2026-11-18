@@ -1,5 +1,24 @@
 # Registro de validación
 
+## SPEC-11 — Documentación y guía de estudio — 2026-11-18
+
+Base develop `5f85467`, con SPEC-10 fusionada mediante PR #15; rama `feature/spec-11-documentacion-estudio`. Entrega documental, sin cambios de código de aplicación, OpenAPI, infraestructura ejecutable ni datos del entorno. [Especificación](specs/SPEC-11-DOCUMENTACION-ESTUDIO.md), [documento general 2.0](ARQUITECTURA_GENERAL.md), [índice](README.md).
+
+Se reescribió la guía general con unas 6 400 palabras: vocabulario PK/SK/primary key, diseño a partir de consultas, motivo de cada clave, índices dispersos/sobrecargados, vistas, recorrido de un pedido, CAS, ACTIVE, transacciones, idempotencia, Redis, puntos/posición/rutas, permisos, operación, límites y preguntas de sustentación. Se reconciliaron modelo físico, AP01–AP16, contratos, entorno, MiniStack, README y plan. Las propuestas originales de architecture/module-contracts/data-access-patterns permanecen en Git; ahora sus rutas describen lo implementado. Documentos GEO anteriores se señalan como históricos y SPEC-10 queda marcada fusionada.
+
+| Comprobación efectivamente ejecutada | Resultado |
+| --- | --- |
+| Catálogo completo contra model.validate y serialize/deserialize | **12 ítems válidos, 11 tipos**, sin claves base duplicadas; incluye TRACKING_ACCESS y PROFILE_AUDIT |
+| Registro HTTP frente a OpenAPI | **40 operaciones, 9 módulos**, conjuntos idénticos; más 3 sondas en el stack |
+| Funciones del documento de contratos | Nombres contrastados con AST de sus servicios; presentes |
+| Enlaces locales Markdown | **36 archivos Markdown y 219 enlaces locales**, sin destinos rotos en documentación versionada + SPEC nueva |
+| Modelo, accesos, HTTP y aprobaciones | **56 passed**, tests/test_storage_model.py, test_access_patterns.py, test_api_contract.py y test_approvals.py; 3.16 s |
+| Formato Git | git diff --check correcto |
+
+Se consultó documentación oficial de DynamoDB sobre componentes, claves, Query/filtros, GSIs, consistencia y TransactWriteItems, enlazada en la guía, separando conceptos del motor de decisiones específicas de FlashDelivery. La auditoría local de documentación se ejecutó con un script temporal en /tmp; no se incorporaron tests que copien texto ni herramientas nuevas al proyecto.
+
+No se reprovisionó, migró ni ejecutó otro benchmark o una nueva suite de navegador/integración para este cambio documental. Las cifras de SPEC-10 y SPEC-06 conservan fecha/alcance y no se atribuyen a esta entrega. No se modificaron .env, credenciales ni archivos locales aportados por el usuario.
+
 ## SPEC-10 — Aprobaciones administrativas — 2026-11-18
 
 Base develop `1571e0c`, SPEC-09 fusionada; rama `feature/spec-10-aprobaciones-admin`, PR hacia develop pendiente revisión. [Especificación](specs/SPEC-10-APROBACIONES-ADMIN.md), [guía y migración](admin/README.md). Bandejas por tipo/estado, detalle mínimo, decisiones con motivo/versión/confirmación y auditoría. Los PATCH existentes siguen siendo compatibles; el formulario manual conserva acceso por ID.

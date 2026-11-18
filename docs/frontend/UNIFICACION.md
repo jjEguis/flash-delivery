@@ -1,5 +1,7 @@
 # Unificación del diseño funcional
 
+> Estado al 2026-11-18: esta integración está fusionada. SPEC-09 añadió la demo guiada y SPEC-10 las bandejas administrativas auditadas; los párrafos siguientes documentan las decisiones de la unificación original. [Guía de estudio vigente](../ARQUITECTURA_GENERAL.md), [administración](../admin/README.md).
+
 Solicitud del usuario: aplicar el diseño aprobado a toda la aplicación antes de continuar ajustes de GPS. Se actualiza el PR de SPEC-08 abierto, sin modificar contratos del backend.
 
 Dirección visual (skill frontend-design): Manrope local, texto #132c2b y superficie #ffffff sobre #f6f8f8; acción verde #087d62; oscuro #0b1417 y superficies #142226. Se reutilizan los tokens, botones, estados y navegación de FE-01, evitando una segunda paleta. Comercio prioriza la tabla y métricas de alcance explícito; repartidor prioriza disponibilidad y pedido activo. El acceso y seguimiento público mantienen una cabecera compacta y no muestran navegación privada.

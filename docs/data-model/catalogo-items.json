@@ -169,6 +169,17 @@
       "toStatus": "ENABLED",
       "profileVersion": 2,
       "reason": "Ejemplo sintético independiente de aprobación"
+    },
+    {
+      "PK": "ORDER#SEED_demo_o1",
+      "SK": "TRACKING",
+      "entityType": "TRACKING_ACCESS",
+      "schemaVersion": 1,
+      "version": 1,
+      "orderId": "SEED_demo_o1",
+      "nonce": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "expiresAt": 1795046400,
+      "revoked": false
     }
   ],
   "schemaVersion": 1
