@@ -109,7 +109,7 @@ def validate(item):
         raise ValueError("schemaVersion debe ser 1")
     if type(item.get("version")) is not int or item["version"] < 1:
         raise ValueError("version debe ser entero positivo")
-    optional = {"courierId"} if kind == "ORDER" else set()
+    optional = {"courierId", "pickupCoordinates", "dropoffCoordinates"} if kind == "ORDER" else set()
     allowed = REQUIRED[kind] | optional | {"entityType", "schemaVersion", "version", "PK", "SK", "GSI1PK", "GSI1SK", "GSI2PK", "GSI2SK"}
     if item.keys() - allowed:
         raise ValueError("Atributos fuera del esquema")
@@ -141,6 +141,13 @@ def validate(item):
     if "currency" in item and (not isinstance(item["currency"], str) or not re.fullmatch(r"[A-Z]{3}", item["currency"])):
         raise ValueError("currency debe tener tres letras mayúsculas")
     if kind == "ORDER":
+        for name in ("pickupCoordinates", "dropoffCoordinates"):
+            if name in item:
+                point = item[name]
+                if not isinstance(point, dict) or set(point) != {"latitudeE6", "longitudeE6"} or any(type(v) is not int for v in point.values()) or abs(point["latitudeE6"]) > 90_000_000 or abs(point["longitudeE6"]) > 180_000_000:
+                    raise ValueError("Coordenadas E6 inválidas")
+        if ("pickupCoordinates" in item) != ("dropoffCoordinates" in item):
+            raise ValueError("Se requieren ambos puntos")
         if item["status"] in {"ASSIGNED", "PICKED_UP", "DELIVERED", "FAILED"} and "courierId" not in item:
             raise ValueError("Estado requiere courierId")
         if item["status"] == "PENDING" and "courierId" in item:

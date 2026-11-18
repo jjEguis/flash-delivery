@@ -1,5 +1,40 @@
 # Registro de validación
 
+## Corrección de bloqueo de tiles — 2026-11-17
+
+La captura del usuario mostró tiles de OSM con aviso 403. Se identificó `Referrer-Policy: no-referrer` en el servidor estático, incompatible con la identificación de origen exigida por el proveedor. El HTML y el worker ahora reciben `strict-origin`: los tiles envían únicamente el origen, sin ruta, query ni fragmento de seguimiento. Las respuestas de API y el cliente `geoApi` conservan `no-referrer`. Se mantiene el proveedor y su caché, sin rotar hosts ni añadir proxies.
+
+Compilación normal/local correctas. Prueba de navegador contra `server.py`: **2 passed** (exclusión del simulador y regresión de encabezados). La nueva prueba intercepta tiles y API, comprueba Referer igual al origen y ausencia del token del fragmento. Se reinició `web` y se verificó la política en :8080 y en el worker. Referencia: [política oficial de OSM](https://operations.osmfoundation.org/policies/tiles/). Recargar la página es necesario para aplicar la nueva política al documento ya abierto.
+
+## SPEC-08 v2 — rutas viales, progreso y ETA — 2026-11-17
+
+Implementación de [Live Delivery Tracking v2](specs/SPEC-08_LIVE_DELIVERY_TRACKING_v2.md), sección 13 normativa. [Verificación previa](geo/GEO-00-V2.md), [guía, migración y limitaciones](geo/README.md), [diseño aplicado](geo/DISENO-V2.md). Se partió de `origin/develop` actualizado en `feature/spec-08-live-delivery-v2`.
+
+| Comprobación | Resultado observado |
+| --- | --- |
+| Flujo HTTP antes de GEO-02 | **2 passed**, MiniStack/Redis reales: creación, aceptación, recogida y entrega |
+| Compatibilidad desplegada | MiniStack **1.5.36**, Redis **7.4.2**, Python **3.12**, DynamoDB ACTIVE, **37 rutas API Gateway** (34 de módulos + salud) |
+| Extracto/OSRM privado | **5.27.1 MLD**, Santa Marta; red interna desde Lambda y cdk-dev; consulta de referencia **31 puntos, 1642.6 m, 142.4 s**; healthcheck correcto |
+| Backend moto/fakeredis | **147 passed, 19 deselected**, 18.78 s; sin red en unitarios |
+| Integración local completa | **19 passed**, 32.76 s; OSRM/Redis/MiniStack reales, servicios, flujo previo y concurrencia conservados |
+| Seguridad/progreso nuevos | DTO finito y cobertura, campos opcionales compatibles, secuencia/TTL, permisos, revocación, estado fuerte, cambio de fase, desvío/cooldown, lock vencido y cierre durante cálculo |
+| Desvío/concurrencia reales | Tres muestras fuera de ruta, cooldown real acortado a 1 s en el test, seis consultas paralelas y **un solo recálculo**; contador por pedido con TTL |
+| Compilación normal/local y lint | Correctos; MapLibre **6.19.0**, worker local emitido y Leaflet retirado; build normal sin controles de demo |
+| Unitarios frontend | **22 + 7 passed**, HTTP/paginación y diseño |
+| Navegador existente/diseño | **10 + 29 passed** |
+| Mapa, permisos GPS y simulador vial | **16 passed**: ambos temas, 360/390/768/1440, axe, worker/canvas cargados, pausa/reinicio, GPS denegado, Redis/tiles caídos y polling sin solapamiento/parada terminal |
+| Compilación de producción | **1 passed**, solo GPS con consentimiento, sin controles de simulación |
+| Interfaz unificada | **58 passed**, incluido pedido con puntos de mapa; ambos temas, cinco anchos, teclado, contraste, sesión en memoria y regresiones previas |
+| Tres sesiones con API real | **1 passed**, aproximadamente 1.4 min: repartidor, comercio y destinatario; recorrido por calles, progreso/ETA, pausa/reanudación, final del simulador y cierre autorizado de entrega |
+
+Medición de una ejecución local, con 44 solicitudes cronometradas de 17 operaciones contractuales distintas: **p50 66.17 ms / p95 73.96 ms**. Se observaron **3 llamadas a OSRM**: cálculo inicial, recálculo por desvío y cambio a PICKED_UP; siete muestras antes del cambio de fase y diez lecturas repetidas no generaron otras llamadas. Las seis lecturas concurrentes adicionales verificaron el lock y se contabilizaron por separado de las 44 mediciones secuenciales. [Métricas agregadas originales](evidencias/spec08-v2/metrics.json). No es una prueba de carga ni una predicción de latencia en AWS.
+
+Capturas del navegador con API real: [comercio claro 1440](evidencias/spec08-v2/comercio-claro-1440.png) y [destinatario oscuro 390](evidencias/spec08-v2/destinatario-oscuro-390.png). Se revisó visualmente ruta por calles, pins, posición, datos de ETA/distancia y disposición móvil. La skill `frontend-design` estaba instalada y se leyó antes de la interfaz. Tiles OSM independientes de OSRM, con atribución; no se usa un OSRM público de demo.
+
+Compatibilidad: creación sin coordenadas y pedidos previos mantienen el flujo. Los puntos estáticos opcionales del pedido se almacenan como E6 en META; las muestras siguen solo en Redis, sin tablas ni GSIs nuevos. FRESH pasa de 30 a 15 s y SIMULATED se restringe también en backend. El administrador conserva diagnóstico por estados sin nuevos permisos GPS.
+
+Límites: ETA aproximada con perfil automóvil, sin tráfico real; NoRoute se probó con respuesta controlada, NoSegment y conexión rechazada con OSRM local. GPS físico y lector de pantalla humano pendientes. WebGL y tiles externos tienen alternativas textuales. MiniStack conserva logs de runtime en CloudWatch local, pero no se observaron los mensajes de aplicación allí: las llamadas se midieron con contador Redis efímero sin coordenadas. La compilación avisa del bundle de MapLibre; `npm audit` conserva 11 alertas altas del toolchain anterior, sin la crítica de la primera versión de MapLibre considerada. No se actualizó ese toolchain fuera del alcance.
+
 ## Unificación de toda la interfaz funcional — 2026-11-16
 
 Se aplica el diseño aprobado a acceso, registro/habilitación, comercio, repartidor, administración, seguimiento público y mapas en :8080. Se utiliza la skill local frontend-design, Manrope y los tokens/componentes compartidos. La vista de mapas se integra en la navegación principal; los enlaces anteriores redirigen. [Alcance y capturas](frontend/UNIFICACION.md).

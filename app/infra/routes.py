@@ -48,6 +48,8 @@ ROUTES = {
         "DELETE /api/v1/orders/{orderId}/location",
         "GET /api/v1/tracking/{token}/location",
         "DELETE /api/v1/orders/{orderId}/tracking-token",
+        "GET /api/v1/orders/{orderId}/route",
+        "GET /api/v1/tracking/{token}/route",
     ],
     "analytics": [
         "GET /api/v1/stores/me/stats",

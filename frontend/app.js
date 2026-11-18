@@ -1,7 +1,7 @@
 import { createApiClient, validPage, validCreatedOrder } from "./api.js";
 import { createPagedList } from "./pagination.js";
 import { installShell, updateShell, updateProfile } from "./src/live/Shell.tsx";
-import { mountGeo } from "./src/features/geo/mount.tsx";
+import { mountGeo, mountOrderPoints } from "./src/features/geo/mount.tsx";
 
 // FlashDelivery — SPA sin dependencias. Habla con /api/v1 a través del proxy local.
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -179,9 +179,11 @@ async function storeView() {
       </section>
       <section class="card" id="store-presence" tabindex="-1"><div class="card__head"><h2>Repartidores en tu zona</h2><button class="btn btn--ghost btn--sm" id="refreshPresence">Actualizar</button></div><div class="list" id="presence"></div></section>
     </div><aside class="sticky"><section class="card" id="new-delivery" tabindex="-1"><h2>Nuevo pedido</h2><p class="muted" style="margin-top:8px">Indica dónde recogerlo y a dónde llevarlo.</p>
-      <form id="newOrder"><label for="pickup">Recoger en</label><input id="pickup" required maxlength="300" placeholder="Dirección del comercio"><label for="dropoff">Entregar en</label><input id="dropoff" required maxlength="300" placeholder="Dirección de destino"><label for="fee">Tarifa (COP)</label><input id="fee" required type="number" min="100" max="100000000" step="100" value="8000"><div class="highlight"><span>Tarifa de la entrega</span><strong id="feeView">$8.000</strong></div><button class="btn btn--block" type="submit">Publicar pedido</button></form>
+      <form id="newOrder"><label for="pickup">Recoger en</label><input id="pickup" required maxlength="300" placeholder="Dirección del comercio"><label for="dropoff">Entregar en</label><input id="dropoff" required maxlength="300" placeholder="Dirección de destino"><div id="order-points"></div><label for="fee">Tarifa (COP)</label><input id="fee" required type="number" min="100" max="100000000" step="100" value="8000"><div class="highlight"><span>Tarifa de la entrega</span><strong id="feeView">$8.000</strong></div><button class="btn btn--block" type="submit">Publicar pedido</button></form>
     </section></aside></div>`;
   app.querySelector('[data-new-delivery]').addEventListener('click',event=>{event.preventDefault();$('#new-delivery').scrollIntoView({block:'start'});$('#pickup').focus({preventScroll:true});});
+  let orderPoints = null;
+  disposeGeo = mountOrderPoints($("#order-points"), points => { orderPoints = points; });
   const row = order => `<tr><td><button type="button" class="table-detail" data-order="${esc(order.orderId)}">${short(order.orderId)}<span class="sr-only"> Ver detalle del pedido ${esc(order.orderId)}</span></button><span class="id">${when(order.createdAt)}</span></td><td>${esc(order.pickupAddress || 'Ver detalle')}</td><td>${badge(order.status)}</td><td class="table-fee">${money(order.feeMinor)}</td></tr>`;
 
   async function loadOrders(reset) {
@@ -227,7 +229,7 @@ async function storeView() {
   $("#refreshPresence").addEventListener("click", guard(loadPresence));
   $("#newOrder").addEventListener("submit", guard(async (e) => {
     e.preventDefault();
-    const body = { pickupAddress: $("#pickup").value, dropoffAddress: $("#dropoff").value, feeMinor: Number($("#fee").value) };
+    const body = { pickupAddress: $("#pickup").value, dropoffAddress: $("#dropoff").value, feeMinor: Number($("#fee").value), ...(orderPoints || {}) };
     const created = await api("POST", "/orders", { body, intent: "create", validate: validCreatedOrder });
     const tokens = load(TOKENS_KEY, {});
     tokens[created.orderId] = created.trackingToken;

@@ -1,7 +1,7 @@
 # SPEC-08 — Geolocalización y seguimiento de entregas
 
 **Proyecto:** FlashDelivery  
-**Estado:** Implementada (GEO-00 a GEO-05), pendiente revisión del PR  
+**Estado:** Base v1 fusionada; alcance ampliado y sustituido por [SPEC-08 v2](SPEC-08_LIVE_DELIVERY_TRACKING_v2.md)
 **Prioridad:** Opcional después del flujo de entregas  
 **Entorno actual:** MiniStack + Redis en Docker  
 **Arquitectura:** Monolito modular serverless (Python, Lambda, API Gateway, DynamoDB Single Table Design)

@@ -23,7 +23,10 @@ class Handler(SimpleHTTPRequestHandler):
 
     def end_headers(self):
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Referrer-Policy", "no-referrer")
+        # Los tiles necesitan identificar el origen. Nunca enviar rutas, query ni tokens.
+        # La API conserva su política restrictiva; geoApi también usa no-referrer.
+        policy = "no-referrer" if self.path.startswith("/api/") else "strict-origin"
+        self.send_header("Referrer-Policy", policy)
         super().end_headers()
 
     def _proxy(self):

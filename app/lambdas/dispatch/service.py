@@ -79,7 +79,7 @@ def accept_order(adapter, actor: ActorContext, order_id, *, request_id):
     return _execute(adapter, actor, "dispatch.accept.v1", order_id, request_id, build)
 
 
-def pick_up_order(adapter, actor: ActorContext, order_id, *, request_id):
+def pick_up_order(adapter, actor: ActorContext, order_id, *, request_id, cache=None):
     """T3: solo el repartidor asignado, desde ASSIGNED."""
     authorize(actor, "COURIER")
     couriers = CouriersRepository(adapter)
@@ -91,7 +91,17 @@ def pick_up_order(adapter, actor: ActorContext, order_id, *, request_id):
         return pairs + [(couriers.build_put(courier_order_view(new), expected_version=order["version"]), None)], \
             {"orderId": order_id, "status": "PICKED_UP"}
 
-    return _execute(adapter, actor, "dispatch.pickup.v1", order_id, request_id, build)
+    def invalidate_previous_route(order, client):
+        if client is None:
+            return
+        from redis.exceptions import RedisError
+        from lambdas.tracking.routes import route_key
+        try:
+            client.delete(route_key(order_id, 'ASSIGNED'))
+        except RedisError:
+            logger.warning('route_cleanup_unavailable')
+    return _execute(adapter, actor, "dispatch.pickup.v1", order_id, request_id, build,
+                    cache=cache, after=invalidate_previous_route)
 
 
 def _invalidate_stats(order, cache):

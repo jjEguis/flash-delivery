@@ -22,7 +22,9 @@ def create(path):
             assert api.call('PATCH', f'/api/v1/admin/{kind}/{who}', {'enabled':True}, admin)[0] == 200
         token = sessions['COURIER']['token']
         api.call('PATCH', '/api/v1/couriers/me/availability', {'available':True}, token)
-        status, order = api.call('POST', '/api/v1/orders', {'pickupAddress':'Origen de prueba', 'dropoffAddress':'Destino de prueba', 'feeMinor':5000}, sessions['STORE']['token'], key='geo_ui_create')
+        status, order = api.call('POST', '/api/v1/orders', {'pickupAddress':'Origen de prueba', 'dropoffAddress':'Destino de prueba', 'feeMinor':5000,
+            'pickupLocation':{'latitude':11.237,'longitude':-74.201},
+            'dropoffLocation':{'latitude':11.235,'longitude':-74.19}}, sessions['STORE']['token'], key='geo_ui_create')
         assert status == 201
         api.created['orders'].add(order['orderId']); api.track(store, 'orders.create.v1', 'geo_ui_create')
         assert api.call('POST', f"/api/v1/orders/{order['orderId']}/accept", token=token, key='geo_ui_accept')[0] == 200

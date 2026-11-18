@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { active, DEMO_ROUTE, geoApi, GeoError } from './api';
-import type { Point, Session } from './api';
+import { active, geoApi, GeoError } from './api';
+import { along, totalMeters } from './geometry';
+import type { Point, Position, RouteResult, Route, Session } from './api';
 
 type Mode = 'idle' | 'simulating' | 'paused' | 'gps' | 'finished';
 export function useSharing(orderId: string, session: Session | null, status: string, onPoint: () => void) {
@@ -9,7 +10,12 @@ export function useSharing(orderId: string, session: Session | null, status: str
   const modeRef = useRef<Mode>('idle');
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const watch = useRef<number | undefined>(undefined);
-  const index = useRef(0);
+  const distance = useRef(0);
+  const road = useRef<Route | null>(null);
+  const speed = useRef(8);
+  const deviation = useRef(0);
+  const retryDelay = useRef(0);
+  const sequence = useRef(Date.now());
   const sending = useRef(false);
   const lastSent = useRef(0);
   const generation = useRef(0);
@@ -26,7 +32,7 @@ export function useSharing(orderId: string, session: Session | null, status: str
     sending.current = false;
   }, []);
   const stop = useCallback(async () => {
-    halt(); changeMode('idle');
+    halt(); road.current=null;distance.current=0;changeMode('idle');
     setMessage('Ubicación desactivada.');
     try { if (session) await geoApi(endpoint, session, 'DELETE'); onPoint(); }
     catch { setMessage('Se detuvo el envío. No se pudo borrar la última ubicación; vencerá en un máximo de 120 segundos.'); }
@@ -36,7 +42,7 @@ export function useSharing(orderId: string, session: Session | null, status: str
     sending.current = true;
     const controller = new AbortController(); request.current = controller;
     try {
-      const result = await geoApi<{accepted: boolean}>(endpoint, session, 'POST', point, controller.signal);
+      const result = await geoApi<{accepted: boolean}>(endpoint, session, 'POST', {...point,sequence:++sequence.current}, controller.signal);
       if (generation.current !== current) return false;
       if (!result.accepted) { setMessage('Muestra anterior ignorada. Esperando la siguiente ubicación.'); return false; }
       setMessage('Ubicación enviada.'); onPoint(); return true;
@@ -44,28 +50,58 @@ export function useSharing(orderId: string, session: Session | null, status: str
       if (generation.current !== current) return false;
       if (error instanceof GeoError && [401,403,404,409].includes(error.status)) {
         halt(); changeMode('idle'); setMessage('Se detuvo el envío: revisa la sesión o el estado de la entrega.');
-      } else setMessage('No se pudo enviar la ubicación. El estado de la entrega sigue disponible.');
+      } else if (error instanceof GeoError && error.status===429) { retryDelay.current=8000;setMessage('Frecuencia limitada. Se reintentará en unos segundos.'); }
+      else setMessage('No se pudo enviar la ubicación. El estado de la entrega sigue disponible.');
       return false;
     } finally { if (generation.current === current) sending.current = false; }
   }, [session, endpoint, halt, onPoint]);
-  const simulate = useCallback((restart = false) => {
-    if (!session || !active(status)) return;
-    halt(); if (restart || index.current >= DEMO_ROUTE.length) index.current = 0;
+  const simulate = useCallback((restart = false, origin?: Position | null) => {
+    if (!session || !active(status) || !(import.meta.env.DEV || import.meta.env.VITE_GEO_SIMULATOR==='true')) return;
+    halt();
+    if (restart) { distance.current=0;road.current=null; }
+    if (!road.current && !origin) {setMessage('Selecciona el inicio de la demo en el mapa.');return;}
     changeMode('simulating');
-    const current = generation.current;
-    const tick = async () => {
-      if (generation.current !== current || modeRef.current !== 'simulating') return;
-      const coordinate = DEMO_ROUTE[index.current];
-      const accepted = await send({ latitude:coordinate[0], longitude:coordinate[1], accuracyMeters:10,
-        recordedAt:new Date().toISOString(), source:'SIMULATED' }, current);
-      if (generation.current !== current) return;
-      if (accepted) index.current++;
-      if (index.current >= DEMO_ROUTE.length) { changeMode('finished'); setMessage('Recorrido finalizado. Esto no marca el pedido como entregado.'); return; }
-      timer.current = setTimeout(tick, Math.max(3000, Number(import.meta.env.VITE_GEO_INTERVAL_MS) || 4000));
+    const current=generation.current;
+    let previousTime=performance.now();
+    const tick=async()=>{
+      if (generation.current!==current || modeRef.current!=='simulating') return;
+      try {
+        if (!road.current) {
+          if (!origin) return;
+          const accepted=await send({...origin,accuracyMeters:10,recordedAt:new Date().toISOString(),source:'SIMULATED'},current);
+          if (generation.current!==current) return;
+          if (!accepted) {timer.current=setTimeout(tick,retryDelay.current || 4000);return;}
+          const response=await geoApi<RouteResult>(`/orders/${encodeURIComponent(orderId)}/route`,session);
+          if (generation.current!==current) return;
+          if (!response.route) {changeMode('paused');setMessage('No hay ruta vial disponible. Revisa los puntos del pedido y reintenta.');return;}
+          road.current=response.route;distance.current=0;previousTime=performance.now();
+        } else {
+          const now=performance.now();
+          const next=Math.min(totalMeters(road.current.geometry.coordinates),distance.current+Math.min(10,(now-previousTime)/1000)*speed.current);
+          previousTime=now;
+          const position=along(road.current.geometry.coordinates,next);
+          const deviating=deviation.current>0;
+          const accepted=await send({longitude:position.coordinate[0],latitude:position.coordinate[1]+(deviating?.001:0),
+            accuracyMeters:10,speedMps:speed.current,headingDegrees:position.heading,recordedAt:new Date().toISOString(),source:'SIMULATED'},current);
+          if (generation.current!==current) return;
+          if (accepted) {distance.current=next;if (deviating) deviation.current--;}
+          const response=await geoApi<RouteResult>(`/orders/${encodeURIComponent(orderId)}/route`,session);
+          if (generation.current!==current) return;
+          const changed=!!response.route && response.route.routeVersion!==road.current.routeVersion;
+          if (changed && response.route) {road.current=response.route;distance.current=0;}
+          if (!changed && accepted && !deviating && next>=totalMeters(road.current.geometry.coordinates)) {changeMode('finished');setMessage('Recorrido finalizado. Esto no marca el pedido como entregado.');return;}
+        }
+      } catch (error) {
+        if (generation.current!==current) return;
+        if (error instanceof GeoError && [401,403,404,409].includes(error.status)) {halt();changeMode('idle');setMessage('Se detuvo la demo por la sesión o el estado del pedido.');return;}
+        setMessage('Ruta no disponible. Se reintentará sin cambiar el estado del pedido.');
+      }
+      if (generation.current===current) {
+        timer.current=setTimeout(tick,Math.max(3000,Math.min(5000,Number(import.meta.env.VITE_GEO_INTERVAL_MS)||4000),retryDelay.current));retryDelay.current=0;
+      }
     };
-    // También al reanudar se respeta el intervalo mínimo del servidor.
-    timer.current = setTimeout(tick, 4000);
-  }, [session, status, halt, send]);
+    timer.current=setTimeout(tick,4000);
+  },[session,status,halt,send,orderId]);
   const pause = () => { halt(); changeMode('paused'); setMessage('Simulación pausada. La última muestra caducará si no reanudas.'); };
   const gps = () => {
     if (!session || !active(status)) return;
@@ -78,14 +114,16 @@ export function useSharing(orderId: string, session: Session | null, status: str
       if (generation.current !== current || modeRef.current !== 'gps' || Date.now()-lastSent.current<4000) return;
       lastSent.current = Date.now();
       void send({latitude:position.coords.latitude, longitude:position.coords.longitude, accuracyMeters:position.coords.accuracy,
-        recordedAt:new Date(position.timestamp).toISOString(), source:'BROWSER_GPS'},current);
+        recordedAt:new Date(position.timestamp).toISOString(), source:'BROWSER_GPS',
+        ...(position.coords.speed!==null && Number.isFinite(position.coords.speed) ? {speedMps:position.coords.speed} : {}),
+        ...(position.coords.heading!==null && Number.isFinite(position.coords.heading) ? {headingDegrees:position.coords.heading} : {})},current);
     }, () => {
       halt(); changeMode('idle'); setMessage('No se pudo usar el GPS. Revisa el permiso del navegador; puedes continuar por estados.');
     }, { enableHighAccuracy:false, maximumAge:0, timeout:15000 }); }
     catch { halt(); changeMode('idle'); setMessage('No se pudo usar el GPS. Puedes continuar por estados.'); }
   };
   useEffect(() => {
-    if (!active(status)) { halt(); modeRef.current='idle'; }
+    if (!active(status)) { halt(); modeRef.current='idle'; setMode('idle'); }
   }, [status, halt]);
   useEffect(() => {
     const leave = () => {
@@ -98,5 +136,5 @@ export function useSharing(orderId: string, session: Session | null, status: str
     window.addEventListener('pagehide',leave); window.addEventListener('storage',sessionChange);
     return () => { window.removeEventListener('pagehide',leave); window.removeEventListener('storage',sessionChange); leave(); };
   }, [endpoint, session, halt]);
-  return {mode,message,simulate,pause,stop,gps};
+  return {mode,message,simulate,pause,stop,gps,setSpeed:(value:number)=>{speed.current=value;},deviate:()=>{deviation.current=3;setMessage("Escenario de desvío: tres muestras a 110 m de la ruta.");}};
 }

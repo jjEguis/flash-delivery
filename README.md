@@ -2,7 +2,7 @@
 
 Aplicación de entregas de última milla con DynamoDB (tabla única), Redis, Python, Lambda y API Gateway, ejecutada localmente sobre MiniStack. Los comercios publican pedidos, los repartidores de la zona compiten por aceptarlos y una transacción condicional garantiza que solo uno gane. El destinatario sigue su pedido con un enlace seguro.
 
-Estado: SPEC-00 a SPEC-08 implementadas, con API HTTP completa (32 operaciones), interfaz web con reintentos, paginación y ubicación opcional durante entregas activas, y pruebas de backend y navegador. Consultar [especificaciones](docs/specs/README.md) y [validación](docs/validation.md).
+Estado: SPEC-00 a SPEC-08 implementadas, con API HTTP completa (34 operaciones de módulos), interfaz web con reintentos, paginación y ubicación opcional, rutas OSRM locales y ETA durante entregas activas, y pruebas de backend y navegador. Consultar [especificaciones](docs/specs/README.md) y [validación](docs/validation.md).
 
 ```text
 flash-delivery/
@@ -35,6 +35,8 @@ Requisitos: Docker Engine con Compose v2 y Node 22.12+ con npm para compilar la 
 
 ```bash
 cp -n .env.example .env
+docker compose --profile geo-prepare run --rm osm-download
+docker compose --profile geo-prepare run --rm osrm-prepare
 docker compose up -d --build --wait
 docker compose exec -T cdk-dev python -m scripts.provision
 docker compose exec -T cdk-dev python -m scripts.demo
@@ -115,7 +117,7 @@ docker compose exec -T cdk-dev python -m scripts.demo --clean                   
 
 ## Persistencia y límites
 
-Compose usa volúmenes para MiniStack y Redis (AOF). `docker compose down` conserva los datos; `docker compose down --volumes` los borra y exige reprovisionar. Ningún contenedor se conecta a AWS real ni monta el socket Docker. MiniStack no reproduce el rendimiento ni la consistencia eventual exactos de DynamoDB; ver el informe de calidad.
+Compose usa volúmenes para MiniStack, Redis (AOF) y el extracto procesado de OSRM. `docker compose down` conserva los datos; `docker compose down --volumes` los borra y exige reprovisionar. Ningún contenedor se conecta a AWS real ni monta el socket Docker. MiniStack no reproduce el rendimiento ni la consistencia eventual exactos de DynamoDB; ver el informe de calidad.
 
 Documentación: [arquitectura](docs/ARQUITECTURA_GENERAL.md), [entorno y tests](docs/ENTORNO_LOCAL.md), [especificaciones](docs/specs/README.md), [plan](docs/PLAN_DE_TRABAJO.md) y [evidencias](docs/validation.md).
 
@@ -123,10 +125,10 @@ Documentación: [arquitectura](docs/ARQUITECTURA_GENERAL.md), [entorno y tests](
 
 FE-00/FE-01 de diseño v2.1 están disponibles para revisión visual con datos simulados. Desde `frontend/`: `npm ci` y `npm run dev:preview` (Node 22.12+). Abrir http://127.0.0.1:5173/preview.html. Incluye comercio, repartidor, seguimiento, claro/oscuro y estados de ejemplo. [Guía y capturas](docs/frontend/FE-01-REVISION.md). La integración de este diseño con la API está pendiente.
 
-## Ubicación y mapas (SPEC-08)
+## Ubicación, rutas y ETA (SPEC-08 v2)
 
 Desde `frontend/`, ejecutar `npm ci` y `npm run build:local` para habilitar los mapas y el simulador local en la aplicación :8080. Si cambió el backend, ejecutar antes `docker compose up -d --build --wait` y `docker compose exec -T cdk-dev python -m scripts.provision`.
 
-Crear un pedido nuevo, aceptarlo con un repartidor y abrir «Compartir ubicación». El comercio abre el mapa desde el detalle; el destinatario, desde su enlace de seguimiento. Solo se comparten posiciones durante entregas activas, con consentimiento, expiración y revocación. `npm run build` excluye los controles de simulación. [Flujo completo, pruebas y límites](docs/geo/README.md).
+Preparar primero el extracto OSRM como indica el arranque local. Crear un pedido nuevo con puntos de recogida/entrega seleccionados en el mapa, aceptarlo con un repartidor y abrir «Compartir ubicación». Seleccionar el inicio de la demo para recorrer calles, ajustar velocidad, pausar y reanudar. Las rutas cambian al recoger y la ETA es aproximada, sin tráfico real. El comercio abre el mapa desde el detalle; el destinatario, desde su enlace de seguimiento. Solo se comparten posiciones durante entregas activas, con consentimiento, expiración y revocación. `npm run build` excluye los controles de simulación. [Flujo completo, pruebas y límites](docs/geo/README.md).
 
 La aplicación de :8080 utiliza el diseño unificado en acceso, registro, comercio, repartidor, administración, seguimiento y mapas. Comparte Manrope, tokens, navegación y selector Sistema/Claro/Oscuro con la base visual aprobada. Los mapas se abren dentro de la misma interfaz, sin pestañas adicionales. [Alcance y capturas](docs/frontend/UNIFICACION.md).

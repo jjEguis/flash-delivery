@@ -11,7 +11,8 @@ def create(request):
     data = request.json()
     return 201, service.create_order(shared_adapter(), request.actor, request_id=request.idempotency_key,
                                      pickup_address=data.get("pickupAddress"),
-                                     dropoff_address=data.get("dropoffAddress"), fee_minor=data.get("feeMinor"))
+                                     dropoff_address=data.get("dropoffAddress"), fee_minor=data.get("feeMinor"),
+                                     pickup_location=data.get("pickupLocation"), dropoff_location=data.get("dropoffLocation"))
 
 
 def available(request):

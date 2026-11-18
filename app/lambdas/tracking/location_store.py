@@ -21,6 +21,8 @@ if previous then
   local old = cjson.decode(previous)
   if old.stoppedAt and (tonumber(ARGV[2]) <= old.stoppedAt or tonumber(ARGV[5]) <= old.stoppedAt) then return 0 end
   if old.epoch and tonumber(ARGV[2]) <= old.epoch then return 0 end
+  local incoming = cjson.decode(ARGV[1])
+  if old.sequence and incoming.sequence and incoming.sequence <= old.sequence then return 0 end
 end
 if redis.call('EXISTS', KEYS[2]) == 1 or redis.call('EXISTS', KEYS[3]) == 1 then return -1 end
 redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[3])

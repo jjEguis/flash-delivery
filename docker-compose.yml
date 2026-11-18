@@ -18,6 +18,16 @@ services:
       DYNAMODB_TABLE_NAME: ${DYNAMODB_TABLE_NAME:-FlashDeliveryTable}
       REDIS_HOST: redis
       REDIS_PORT: "6379"
+      OSRM_URL: http://osrm:5000
+      OSRM_TIMEOUT_SECONDS: ${OSRM_TIMEOUT_SECONDS:-3}
+      ROUTING_BBOX: ${ROUTING_BBOX:--74.28,11.12,-74.05,11.36}
+      LOCATION_TTL_SECONDS: ${LOCATION_TTL_SECONDS:-120}
+      LOCATION_FRESH_SECONDS: ${LOCATION_FRESH_SECONDS:-15}
+      LOCATION_MIN_INTERVAL_MS: ${LOCATION_MIN_INTERVAL_MS:-3000}
+      ROUTE_TTL_SECONDS: ${ROUTE_TTL_SECONDS:-300}
+      ROUTE_DEVIATION_METERS: ${ROUTE_DEVIATION_METERS:-50}
+      ROUTE_RECALCULATE_SECONDS: ${ROUTE_RECALCULATE_SECONDS:-30}
+      TRACKING_SIMULATION_ENABLED: ${TRACKING_SIMULATION_ENABLED:-true}
     networks: [local]
     depends_on:
       ministack:
@@ -59,6 +69,38 @@ services:
       timeout: 3s
       retries: 10
     stop_grace_period: 15s
+  osm-download:
+    profiles: [geo-prepare]
+    build: ./infra/osrm
+    environment:
+      OSM_PBF_URL: ${OSM_PBF_URL:-https://download.geofabrik.de/south-america/colombia-latest.osm.pbf}
+      ROUTING_BBOX: ${ROUTING_BBOX:--74.28,11.12,-74.05,11.36}
+    volumes: [osrm-data:/data]
+    networks: [local]
+  osrm-prepare:
+    profiles: [geo-prepare]
+    image: ${OSRM_IMAGE:-ghcr.io/project-osrm/osrm-backend:v5.27.1}
+    volumes: [osrm-data:/data]
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        test -f /data/processed.ok && exit 0
+        osrm-extract -p /opt/car.lua /data/santa-marta.osm.pbf
+        osrm-partition /data/santa-marta.osrm
+        osrm-customize /data/santa-marta.osrm
+        touch /data/processed.ok
+    networks: [local]
+  osrm:
+    image: ${OSRM_IMAGE:-ghcr.io/project-osrm/osrm-backend:v5.27.1}
+    command: [osrm-routed, --algorithm, mld, --verbosity, WARNING, /data/santa-marta.osrm]
+    volumes: [osrm-data:/data:ro]
+    networks: [local]
+    healthcheck:
+      test: ["CMD", "bash", "-ec", "exec 3<>/dev/tcp/127.0.0.1/5000; printf 'GET /route/v1/driving/-74.211,11.244;-74.201,11.237?overview=false HTTP/1.0\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; cat <&3 | grep -q '\"code\":\"Ok\"'"]
+      interval: 10s
+      timeout: ${OSRM_HEALTH_TIMEOUT:-5s}
+      retries: 12
+      start_period: 10s
   web:
     image: ${WEB_IMAGE:-python:3.12-slim-bookworm}
     command: [python, /frontend/server.py]
@@ -83,3 +125,4 @@ networks:
 volumes:
   ministack-data:
   redis-data:
+  osrm-data:

@@ -109,3 +109,22 @@ test('sesión en memoria permite navegar al mapa y cerrar GPS con almacenamiento
   await expect(page.getByRole('heading',{name:'Todo listo para tu próxima entrega.'})).toBeVisible();
   expect(await page.evaluate(()=>window.__cleared)).toBe(1);
 });
+
+test('nuevo pedido incluye puntos seleccionados sin inferirlos de la dirección',async({page})=>{
+  await fixture(page,{role:'STORE'});
+  let payload;
+  await page.route('**/api/v1/orders',async route=>{
+    payload=route.request().postDataJSON();
+    return route.fulfill({status:201,json:{...orders[0],orderId:'o_new',trackingToken:'o_new.secret'}});
+  });
+  await page.goto('/#/comercio');
+  await page.getByLabel('Recoger en',{exact:true}).fill('Dirección textual de recogida');
+  await page.getByLabel('Entregar en',{exact:true}).fill('Dirección textual de entrega');
+  await page.getByText('Seleccionar puntos en el mapa (opcional)',{exact:true}).click();
+  await page.getByRole('button',{name:'Usar puntos de demo de Santa Marta'}).click();
+  await page.getByRole('button',{name:'Publicar pedido',exact:true}).click();
+  await expect.poll(()=>payload).toBeTruthy();
+  expect(payload.pickupLocation).toEqual({latitude:11.237,longitude:-74.201});
+  expect(payload.dropoffLocation).toEqual({latitude:11.235,longitude:-74.19});
+  expect(payload.pickupAddress).toBe('Dirección textual de recogida');
+});
