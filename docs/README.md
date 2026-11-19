@@ -1,6 +1,6 @@
 # Documentación de FlashDelivery
 
-Actualizada el 2026-11-18 contra SPEC-00 a SPEC-10 fusionadas en develop. SPEC-11 reconcilia la documentación y amplía la guía de estudio; no implementa nuevos endpoints.
+Actualizada el 2026-11-19 contra SPEC-00 a SPEC-11 fusionadas en develop. SPEC-12 añade el catálogo de endpoints; no implementa rutas nuevas.
 
 ## Para estudiar y sustentar
 
@@ -18,6 +18,7 @@ Actualizada el 2026-11-18 contra SPEC-00 a SPEC-10 fusionadas en develop. SPEC-1
 | Registro → aprobación → pedido → recorridos → entrega | [Demo guiada](demo/README.md) |
 | Aprobar/suspender/reactivar, auditoría y backfill | [Guía administrativa](admin/README.md) |
 | OSRM, GPS, simulación, puntos, cobertura, ETA y tiles | [Guía GEO](geo/README.md) |
+| Inventario explicado de todos los endpoints | [Catálogo de 43 endpoints](api/ENDPOINTS.md) |
 | Endpoints y schemas exactos | [OpenAPI](api/openapi.json) |
 | Evidencia fechada y límites de cada ejecución | [Validación](validation.md) |
 | Compatibilidad del emulador | [MiniStack](ministack.md) |

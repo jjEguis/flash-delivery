@@ -2,7 +2,7 @@
 
 Base importada del paquete v1.1 aportado por el usuario. Son requisitos y criterios de aceptación; su presencia no implica implementación ni validación. Consultar el [plan](../PLAN_DE_TRABAJO.md) para conocer las brechas actuales.
 
-Estado: SPEC-00 a SPEC-10 fusionadas, incluida la ampliación de seguimiento vial v2. SPEC-11 actualiza la documentación y la guía de estudio, pendiente revisión. Evidencias fechadas en [validación](../validation.md).
+Estado: SPEC-00 a SPEC-11 fusionadas. SPEC-12 añade catálogo de endpoints, pendiente revisión. Evidencias fechadas en [validación](../validation.md).
 
 | Orden | Especificación | Resultado esperado |
 | --- | --- | --- |
@@ -18,6 +18,7 @@ Estado: SPEC-00 a SPEC-10 fusionadas, incluida la ampliación de seguimiento via
 | 9 | [Demo guiada](SPEC-09-DEMO-GUIADA.md) | Registro/aprobación guiados, puntos completos y simulación por fase; fusionada y validada |
 | 10 | [Aprobaciones administrativas](SPEC-10-APROBACIONES-ADMIN.md) | Bandejas por estado, auditoría y suspensión segura; fusionada y validada |
 | 11 | [Documentación y estudio](SPEC-11-DOCUMENTACION-ESTUDIO.md) | Documentación vigente, claves e índices explicados, ejemplos y comprobación de coherencia |
+| 12 | [Catálogo de endpoints](SPEC-12-CATALOGO-ENDPOINTS.md) | 40 operaciones de módulos y 3 sondas, permisos, parámetros y respuestas explicadas |
 
 El contrato vigente está en [OpenAPI](../api/openapi.json). Para nuevas funcionalidades, detallar actor, entradas, autorización, precondiciones, resultados, errores, persistencia y pruebas. `requestId` de trazabilidad e `Idempotency-Key` son conceptos distintos; mantener esa separación en API y frontend.
 

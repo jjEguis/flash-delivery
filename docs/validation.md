@@ -1,5 +1,37 @@
 # Registro de validación
 
+## SPEC-12 — Catálogo de endpoints y limpieza local — 2026-11-19
+
+Base develop `1d5bced`, con SPEC-11 fusionada mediante PR #16. Rama `feature/spec-12-catalogo-endpoints`. [Catálogo legible](api/ENDPOINTS.md), [especificación](specs/SPEC-12-CATALOGO-ENDPOINTS.md). Petición explícita del usuario: documento con todos los endpoints y eliminar comercios/repartidores/pedidos conservando acceso administrativo. No modificar ni corregir demo GPS.
+
+El catálogo contiene **40 fichas de módulos y 3 sondas**: métodos/rutas, permisos, parámetros path/query/header, cuerpos/ejemplos, respuestas declaradas, reglas de estado/idempotencia y secuencia de prueba sin geografía. Se contrastó exactamente cada ficha contra ROUTES/OpenAPI y sus parámetros/códigos; enlaces locales correctos y git diff --check sin incidencias. **13 pruebas de contrato HTTP aprobadas**, 0.19 s. No se ejecutaron pruebas de GPS para esta entrega ni se afirma que la demo funcione.
+
+### Limpieza autorizada del entorno
+
+Se detuvo brevemente web para evitar escrituras por el proxy. Un script temporal paginó Scan fuerte y eliminó por claves únicamente tipos de negocio del esquema en la tabla local, con BatchWrite/reintentos de operaciones no procesadas. Se conservaron tabla/GSIs, infraestructura, configuración y credenciales. No se añadió endpoint DELETE ni script destructivo permanente al proyecto.
+
+| Tipo eliminado | Cantidad |
+| --- | ---: |
+| STORE | 1 |
+| COURIER | 2 |
+| ORDER | 4 |
+| ORDER_EVENT | 12 |
+| STORE_STATUS_VIEW | 4 |
+| COURIER_ORDER_VIEW | 3 |
+| ACTIVE_ASSIGNMENT | 1 |
+| TRACKING_ACCESS | 3 |
+| IDEMPOTENCY | 12 |
+| STORE_STATS | 1 |
+| **Total DynamoDB** | **43** |
+
+No había auditorías PROFILE_AUDIT. Redis: 3 claves de negocio en inventario inicial; al ejecutar la limpieza quedaba 1, que se eliminó. Se comprobaron vacías las familias de presencia, estadísticas y tracking, sin usar FLUSHALL/FLUSHDB. No se ejecutó seed/demo después de limpiar. ADMIN no es un registro DynamoDB; su login depende de configuración local y se conservó.
+
+### Despliegue y verificación posterior
+
+La API persistida tenía 35 rutas y no incluía los listados administrativos (404). Se actualizó con el código ya fusionado, sin modificar fuente de aplicación. scripts.provision falló dos veces por DNS al resolver dependencias, incluida repetición fuera del sandbox; se reutilizaron las dependencias del ZIP local después de verificar sus **9 versiones exactas frente al lock runtime**, y se incorporaron las fuentes Python actuales. Se publicó/aplicó el paquete mediante las funciones existentes de S3/CDK/provision, sin editar esos scripts ni cambiar GPS. Esta reutilización fue temporal de operación local, no una nueva estrategia de empaquetado del repositorio.
+
+Verificación por API real y lectura fuerte posterior: **43 rutas desplegadas**, conjunto exacto de registro + sondas; login ADMIN 200 sin mostrar token; seis listados de perfiles (dos tipos × tres estados) HTTP 200 con items vacíos y nextCursor null; las tres sondas HTTP 200; frontend :8080 HTTP 200. **0 ítems DynamoDB y 0 claves de negocio Redis** después de esas comprobaciones. No se recrearon usuarios/perfiles/pedidos ni se publicó ningún dato privado en la evidencia.
+
 ## SPEC-11 — Documentación y guía de estudio — 2026-11-18
 
 Base develop `5f85467`, con SPEC-10 fusionada mediante PR #15; rama `feature/spec-11-documentacion-estudio`. Entrega documental, sin cambios de código de aplicación, OpenAPI, infraestructura ejecutable ni datos del entorno. [Especificación](specs/SPEC-11-DOCUMENTACION-ESTUDIO.md), [documento general 2.0](ARQUITECTURA_GENERAL.md), [índice](README.md).
