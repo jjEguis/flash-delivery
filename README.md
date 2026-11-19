@@ -2,7 +2,7 @@
 
 Aplicación de entregas de última milla con DynamoDB (tabla única), Redis, Python, Lambda y API Gateway, ejecutada localmente sobre MiniStack. Los comercios publican pedidos, los repartidores de la zona compiten por aceptarlos y una transacción condicional garantiza que solo uno gane. El destinatario sigue su pedido con un enlace seguro.
 
-Estado: **SPEC-00 a SPEC-10 fusionadas**. API con 40 operaciones de módulos, interfaz unificada, aprobaciones auditadas, pedidos transaccionales y seguimiento vial local. SPEC-11 actualiza documentación y la guía de estudio.
+Estado: **SPEC-00 a SPEC-11 fusionadas**. API con 40 operaciones de módulos, interfaz unificada, aprobaciones auditadas, pedidos transaccionales y seguimiento vial local. SPEC-12 añade el catálogo de endpoints.
 
 Para estudiar: **[Documento general de arquitectura](docs/ARQUITECTURA_GENERAL.md)** → [modelo single table](docs/data-model/README.md) → [patrones AP01–AP16](docs/data-access-patterns.md) → [contratos](docs/module-contracts.md). El documento general explica por qué la primary key es `(PK, SK)`, la razón de cada clave e índice, y las garantías con ejemplos. [Índice completo de documentación](docs/README.md).
 
@@ -61,7 +61,7 @@ Si tu UID/GID no es 1000, configura `DEV_UID` y `DEV_GID` en `.env`. Los puertos
 
 ## API
 
-Contrato completo en [`docs/api/openapi.json`](docs/api/openapi.json). El frontend la sirve en el mismo origen (`http://127.0.0.1:8080/api/v1/...`); directamente en MiniStack la base es `http://127.0.0.1:4566/_aws/execute-api/<ApiId>/local`, con `ApiId` en `app/.local/outputs.json`.
+Inventario explicado de las **43 rutas** en [Catálogo de endpoints](docs/api/ENDPOINTS.md). Contrato formal en [`docs/api/openapi.json`](docs/api/openapi.json). El frontend la sirve en el mismo origen (`http://127.0.0.1:8080/api/v1/...`); directamente en MiniStack la base es `http://127.0.0.1:4566/_aws/execute-api/<ApiId>/local`, con `ApiId` en `app/.local/outputs.json`.
 
 ```bash
 TOKEN=$(curl -s -X POST localhost:8080/api/v1/auth/dev-login -H 'Content-Type: application/json' \

@@ -1,6 +1,6 @@
 # SPEC-11 — Documentación vigente y guía de estudio
 
-Fecha: 2026-11-18. Base: develop `5f85467`, después del merge de SPEC-10/PR #15. Estado: implementada y validada documentalmente; pendiente revisión del PR.
+Fecha: 2026-11-18. Base: develop `5f85467`, después del merge de SPEC-10/PR #15. Estado: implementada, validada y fusionada mediante PR #16.
 
 ## Objetivo y alcance
 

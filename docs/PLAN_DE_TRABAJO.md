@@ -1,18 +1,18 @@
 # Plan de trabajo — FlashDelivery
 
-Actualizado: 2026-11-18. Este documento describe el estado actual; los diagnósticos iniciales se conservan en el historial Git. Las evidencias de cada entrega están en [validación](validation.md).
+Actualizado: 2026-11-19. Este documento describe el estado actual; los diagnósticos iniciales se conservan en el historial Git. Las evidencias de cada entrega están en [validación](validation.md).
 
 ## Base implementada y fusionada
 
-SPEC-00 a SPEC-10: entorno MiniStack/Redis y OSRM local, modelo de tabla única y consultas sin Scan, transacciones/idempotencia, identidad local, perfiles y habilitación, creación/asignación/ciclo de entrega, presencia y estadísticas, frontend funcional con temas y paginación, bandejas administrativas con auditoría/suspensión segura, seguimiento público y rutas por fase con ETA aproximada. Contrato vigente: [OpenAPI](api/openapi.json).
+SPEC-00 a SPEC-11: entorno MiniStack/Redis y OSRM local, modelo de tabla única y consultas sin Scan, transacciones/idempotencia, identidad local, perfiles y habilitación, creación/asignación/ciclo de entrega, presencia y estadísticas, frontend funcional con temas y paginación, bandejas administrativas con auditoría/suspensión segura, seguimiento público y rutas por fase con ETA aproximada. Contrato vigente: [OpenAPI](api/openapi.json).
 
 SPEC-10 se fusionó mediante [PR #15](https://github.com/jjEguis/flash-delivery/pull/15), base develop `5f85467`. No hay que rehacer registro, listados administrativos, asignación ni integración visual para avanzar. Los perfiles antiguos requieren la migración explícita descrita en la [guía administrativa](admin/README.md).
 
-## Incremento actual — SPEC-11: documentación y estudio
+## Incremento actual — SPEC-12: catálogo de endpoints
 
-[Especificación](specs/SPEC-11-DOCUMENTACION-ESTUDIO.md). Reconciliar el documento general y las guías técnicas con el código fusionado: single table, motivación de cada PK/SK, GSIs, AP01–AP16, transacciones, idempotencia, Redis, geografía, permisos y operación. Añadir ejemplos verificables y preguntas para sustentación; distinguir propuestas históricas de funciones implementadas. Sin cambios de código de negocio ni despliegue.
+SPEC-11 está fusionada por PR #16, develop `1d5bced`. La guía general, modelo y documentación de estudio ya están actualizados.
 
-Entregar en rama/PR propio hacia develop, sin fusionar automáticamente. La [guía general](ARQUITECTURA_GENERAL.md) es la lectura principal; [índice documental](README.md) organiza el resto.
+[Especificación](specs/SPEC-12-CATALOGO-ENDPOINTS.md), [catálogo de 43 endpoints](api/ENDPOINTS.md). Documentar todas las rutas de módulos y sondas con rol, parámetros, cuerpos, respuestas y reglas. No cambiar la demo GPS. Limpieza del entorno local autorizada en esta sesión: perfiles, pedidos y sus datos derivados; conservar configuración administrativa. Evidencia en docs/validation.md. Entrega por PR propio hacia develop, sin fusionar automáticamente.
 
 ## Trabajo posterior por priorizar
 
