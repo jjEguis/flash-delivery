@@ -1,0 +1,544 @@
+import { createApiClient, validPage, validCreatedOrder } from "./api.js";
+import { createPagedList } from "./pagination.js";
+import { installShell, updateShell, updateProfile } from "./src/live/Shell.tsx";
+import { mountApprovals } from "./src/features/admin/mount.tsx";
+import { mountGeo, mountOrderPoints } from "./src/features/geo/mount.tsx";
+
+// FlashDelivery — SPA sin dependencias. Habla con /api/v1 a través del proxy local.
+const $ = (sel, el = document) => el.querySelector(sel);
+const app = installShell();
+const SESSION_KEY = "fd.session";
+const TOKENS_KEY = "fd.trackingTokens";
+const STATUS = {
+  PENDING: "Pendiente", ASSIGNED: "Asignado", PICKED_UP: "Recogido",
+  DELIVERED: "Entregado", CANCELLED: "Cancelado", FAILED: "Fallido",
+};
+const EVENT_LABEL = {
+  CREATED: "Pedido creado", ASSIGNED: "Repartidor asignado", PICKED_UP: "Pedido recogido",
+  DELIVERED: "Pedido entregado", CANCELLED: "Pedido cancelado", FAILED: "Entrega fallida",
+};
+let timers = [];
+let zonesCache = null;
+let disposeGeo = null;
+let viewVersion = 0;
+
+// ---------- utilidades ----------
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const money = (n) => "$" + Number(n || 0).toLocaleString("es-CO");
+const when = (iso) => (iso ? new Date(iso).toLocaleString("es-CO", { dateStyle: "medium", timeStyle: "short" }) : "—");
+const badge = (s) => `<span class="badge s-${esc(s)}">${esc(STATUS[s] || s)}</span>`;
+const short = (id) => esc(String(id || "").slice(-8));
+const month = () => new Date().toISOString().slice(0, 7);
+const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
+const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* sin almacenamiento */ } };
+let session = load(SESSION_KEY, null);
+
+function toast(message, bad = false) {
+  const t = $("#toast");
+  t.textContent = message;
+  t.className = "toast" + (bad ? " bad" : "");
+  t.hidden = false;
+  clearTimeout(t._h);
+  t._h = setTimeout(() => { t.hidden = true; }, 4200);
+}
+
+function every(ms, fn) { timers.push(setInterval(fn, ms)); }
+
+let requestStorage;
+try { requestStorage = localStorage; } catch { /* navegador sin almacenamiento */ }
+const api = createApiClient({ getSession: () => session, storage: requestStorage, onUnauthorized: () => logout(true) });
+
+async function zones() {
+  if (!zonesCache) zonesCache = (await api("GET", "/zones")).items;
+  return zonesCache;
+}
+const zoneName = (id) => (zonesCache || []).find((z) => z.zoneId === id)?.name || id;
+
+function logout(expired) {
+  session = null;
+  save(SESSION_KEY, null);
+  if (expired) toast("Tu sesión expiró; vuelve a iniciar sesión", true);
+  location.hash = "#/";
+  render();
+}
+
+function nav() {
+  const route = location.hash.split('/')[1] || '';
+  updateShell(session, route);
+}
+
+function guard(fn) {
+  return async (event) => {
+    if (event?.type === "submit") event.preventDefault();
+    const button = event?.submitter || event?.target?.closest?.("button") || event?.currentTarget;
+    if (button?.disabled) return;
+    if (button && "disabled" in button) button.disabled = true;
+    try { await fn(event); } catch (error) { toast(error.message, true); } finally {
+      if (button && "disabled" in button) button.disabled = false;
+    }
+  };
+}
+
+// ---------- inicio ----------
+function home() {
+  app.innerHTML = `
+    <section class="auth-heading"><p class="page-context">Tu espacio de entregas</p><h1>Todo listo para tu próxima entrega.</h1>
+      <p>Publica un pedido, encuentra un repartidor de tu zona y sigue cada paso hasta su destino.</p></section>
+    <div class="layout auth-layout"><section class="card"><div class="card__head"><h2>¿Cómo quieres entrar?</h2></div>
+      <div class="grid grid--roles" role="group" aria-label="Rol">
+        ${[["STORE","Comercio","Publica y gestiona tus entregas"],["COURIER","Repartidor","Organiza tu jornada y acepta pedidos"],["ADMIN","Administración","Gestiona perfiles y pedidos"]].map(([role,title,text],i)=>`<button type="button" class="option" data-role="${role}" aria-pressed="${i===0}"><b>${title}</b><span class="muted">${text}</span></button>`).join('')}
+      </div>
+      <form id="login"><label for="userId">Usuario</label><input id="userId" name="userId" required maxlength="64" pattern="[A-Za-z0-9_\\-]+" autocomplete="username" placeholder="Tu usuario" value="${esc(load('fd.lastUser',''))}">
+        <div id="adminCode" hidden><label for="code">Código de administrador</label><input id="code" name="code" type="password" autocomplete="off"></div>
+        <button class="btn btn--block" type="submit">Entrar</button><p class="muted" style="margin-top:12px">Acceso al entorno de demostración local.</p>
+      </form></section>
+      <aside class="card auth-help"><h2>¿Esperas una entrega?</h2><p class="muted" style="margin-top:12px">Consulta su avance con el enlace que te compartió el comercio.</p>
+        <form id="trackForm"><label for="token">Código de seguimiento</label><input id="token" required placeholder="Pega tu enlace o código"><button class="btn btn--block">Ver estado</button></form>
+      </aside></div>
+    <details class="demo-guide"><summary>Cómo probar la entrega completa</summary>
+      <p>Usa sesiones independientes: comercio en una ventana normal, repartidor en incógnito y administrador en otro perfil o navegador. Dos pestañas del mismo perfil comparten el usuario.</p>
+      <ol><li><strong>Registrar.</strong> Entra con un usuario nuevo, elige Comercio o Repartidor y registra su nombre y zona.</li>
+      <li><strong>Habilitar.</strong> Comparte el identificador de registro con el administrador. Después pulsa «Ya me habilitaron, actualizar».</li>
+      <li><strong>Publicar.</strong> El comercio crea un pedido con recogida y entrega en el mapa para probar rutas.</li>
+      <li><strong>Aceptar y recorrer.</strong> El repartidor activa disponibilidad, acepta y abre «Compartir ubicación». Mantén esa vista abierta durante la simulación.</li>
+      <li><strong>Recoger y entregar.</strong> Recorre la ruta a recogida, marca recogido, inicia la ruta a entrega y marca entregado. El simulador no cambia estos estados por sí solo.</li></ol>
+      <p>Las cuentas de ejemplo ya están habilitadas. Para probar la aprobación usa usuarios nuevos. La demo sigue funcionando por estados sin compartir ubicación.</p>
+    </details>`;
+  let role = "STORE";
+  app.querySelectorAll("[data-role]").forEach((b) => b.addEventListener("click", () => {
+    role = b.dataset.role;
+    app.querySelectorAll("[data-role]").forEach((o) => o.setAttribute("aria-pressed", String(o === b)));
+    $("#adminCode").hidden = role !== "ADMIN";
+  }));
+  $("#login").addEventListener("submit", guard(async (e) => {
+    e.preventDefault();
+    const userId = $("#userId").value.trim();
+    const body = { userId, role };
+    if (role === "ADMIN") body.adminCode = $("#code").value;
+    const result = await api("POST", "/auth/dev-login", { body });
+    session = { token: result.token, actor: result.actor };
+    save(SESSION_KEY, session);
+    save("fd.lastUser", userId);
+    location.hash = { STORE: "#/comercio", COURIER: "#/repartidor", ADMIN: "#/admin" }[role];
+  }));
+  $("#trackForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const raw = $("#token").value.trim();
+    location.hash = "#/seguimiento/" + encodeURIComponent(raw.split("/seguimiento/").pop());
+  });
+}
+
+// ---------- perfil (comercio / repartidor) ----------
+async function registration(kind) {
+  const list = await zones();
+  app.innerHTML = `<section class="card" style="max-width:560px;margin:0 auto">
+    <h1>${kind === "store" ? "Registra tu comercio" : "Registra tu perfil de repartidor"}</h1>
+    <p class="muted" style="margin-top:6px">Un administrador debe habilitarlo antes de ${kind === "store" ? "publicar pedidos" : "aceptar pedidos"}.</p>
+    <form id="reg"><label for="name">Nombre</label><input id="name" required maxlength="120">
+      <label for="zone">Zona</label><select id="zone">${list.map((z) => `<option value="${esc(z.zoneId)}">${esc(z.name)}</option>`).join("")}</select>
+      <button class="btn btn--block">Registrar</button></form></section>`;
+  $("#reg").addEventListener("submit", guard(async (e) => {
+    e.preventDefault();
+    await api("POST", kind === "store" ? "/stores" : "/couriers", { body: { name: $("#name").value, zoneId: $("#zone").value } });
+    toast("Registro enviado; queda pendiente de habilitación");
+    render();
+  }));
+}
+
+function waiting(kind, id, status) {
+  app.innerHTML = `<section class="card" style="max-width:560px;margin:0 auto">
+    <h1>${status === "SUSPENDED" ? "Tu perfil está suspendido" : "Tu registro está en revisión"}</h1><div class="notice" style="margin-top:20px">Tu ${kind} está ${status === "SUSPENDED" ? "suspendido. Contacta al administrador para revisar la decisión" : "pendiente de habilitación"}.</div>
+    <p>Comparte este identificador con un administrador:</p>
+    <label for="registrationId">Identificador para el administrador</label><input id="registrationId" value="${esc(id)}" readonly autocomplete="off" spellcheck="false">
+    <p class="muted">En otra sesión, el administrador entra a Administración, busca tu perfil en ${kind==='comercio'?'Comercios':'Repartidores'}, abre «Revisar perfil» y confirma «Habilitar perfil». También puede usar este identificador en el formulario manual. Después actualiza aquí. La aprobación no es automática.</p>
+    <button class="btn btn--block btn--ghost" data-act="reload">Ya me habilitaron, actualizar</button></section>`;
+}
+
+async function profile(path, kind) {
+  try { return await api("GET", path); } catch (error) {
+    if (error.status === 404) { await registration(kind); return null; }
+    throw error;
+  }
+}
+
+// ---------- comercio ----------
+async function storeView() {
+  const owner = viewVersion;
+  await zones();
+  if (owner !== viewVersion) return;
+  const store = await profile("/stores/me", "store");
+  if (owner !== viewVersion || !store) return;
+  if (!store.enabled) return waiting("comercio", store.storeId, store.approvalStatus);
+  updateProfile(store.name, zoneName(store.zoneId));
+  const ui = { filter: "", cursor: null, items: [] };
+  const monthLabel = new Intl.DateTimeFormat('es-CO',{month:'long',timeZone:'UTC'}).format(new Date(month()+'-01T00:00:00Z'));
+  app.innerHTML = `
+    <div class="live-heading"><div><p class="page-context">${esc(store.name)} · ${esc(zoneName(store.zoneId))}</p><h1>Tu operación, al día.</h1><p>Un vistazo a tus entregas. Tú decides el siguiente paso.</p></div>
+      <a class="btn" href="#/comercio" data-new-delivery>Nueva entrega</a></div>
+    <section class="metrics-strip" aria-label="Resumen de entregas">
+      <div class="metric"><span class="metric-label">Pedidos en esta vista</span><strong id="visibleOrders">—</strong><span class="metric-detail">Filas cargadas con el filtro actual</span></div>
+      <div class="metric"><span class="metric-label">Entregados en ${esc(monthLabel)}</span><strong id="delivered">—</strong><span class="metric-detail">Entregas completadas este mes</span></div>
+      <div class="metric"><span class="metric-label">Tarifas de ${esc(monthLabel)}</span><strong id="billed">—</strong><span class="metric-detail">De tus entregas completadas</span></div>
+      <div class="metric"><span class="metric-label">Repartidores visibles</span><strong id="visibleCouriers">—</strong><span class="metric-detail">Disponibles en tu zona</span></div>
+    </section>
+    <div class="metric-note"><span id="src" class="badge"></span><button class="btn btn--ghost btn--sm" id="refreshStats">Actualizar resumen</button></div>
+    <div class="layout"><div>
+      <section class="card" id="store-orders" tabindex="-1"><div class="card__head"><h2>Tus pedidos</h2><span class="muted">Las entregas de tu comercio</span></div>
+        <div class="chips filters" role="group" aria-label="Filtrar por estado">${['',...Object.keys(STATUS)].map(status=>`<button type="button" class="chip" data-filter="${status}" aria-pressed="${status===''}">${status?STATUS[status]:'Todos'}</button>`).join('')}</div>
+        <div class="live-table-wrap" role="region" aria-label="Tabla de entregas, desplazable horizontalmente" tabindex="0"><table class="live-table"><thead><tr><th>Entrega</th><th>Recogida</th><th>Estado</th><th>Tarifa</th></tr></thead><tbody id="orders"></tbody></table></div>
+        <button class="btn btn--block btn--ghost" id="more" hidden>Cargar más</button>
+      </section>
+      <section class="card" id="store-presence" tabindex="-1"><div class="card__head"><h2>Repartidores en tu zona</h2><button class="btn btn--ghost btn--sm" id="refreshPresence">Actualizar</button></div><div class="list" id="presence"></div></section>
+    </div><aside class="sticky"><section class="card" id="new-delivery" tabindex="-1"><h2>Nuevo pedido</h2><p class="muted" style="margin-top:8px">Indica dónde recogerlo y a dónde llevarlo.</p>
+      <form id="newOrder"><label for="pickup">Recoger en</label><input id="pickup" required maxlength="300" placeholder="Dirección del comercio"><label for="dropoff">Entregar en</label><input id="dropoff" required maxlength="300" placeholder="Dirección de destino"><div id="order-points"></div><p id="order-points-error" class="notice" tabindex="-1" hidden></p><label for="fee">Tarifa (COP)</label><input id="fee" required type="number" min="100" max="100000000" step="100" value="8000"><div class="highlight"><span>Tarifa de la entrega</span><strong id="feeView">$8.000</strong></div><button class="btn btn--block" type="submit">Publicar pedido</button></form>
+    </section></aside></div>`;
+  app.querySelector('[data-new-delivery]').addEventListener('click',event=>{event.preventDefault();$('#new-delivery').scrollIntoView({block:'start'});$('#pickup').focus({preventScroll:true});});
+  let orderPoints = null, orderPointsError = '';
+  disposeGeo = mountOrderPoints($("#order-points"), (points, problem) => {
+    orderPoints = points; orderPointsError = problem;
+    const error = $("#order-points-error");
+    if (error && !problem) { error.hidden = true; error.textContent = ''; }
+  });
+  const row = order => `<tr><td><button type="button" class="table-detail" data-order="${esc(order.orderId)}">${short(order.orderId)}<span class="sr-only"> Ver detalle del pedido ${esc(order.orderId)}</span></button><span class="id">${when(order.createdAt)}</span></td><td>${esc(order.pickupAddress || 'Ver detalle')}</td><td>${badge(order.status)}</td><td class="table-fee">${money(order.feeMinor)}</td></tr>`;
+
+  async function loadOrders(reset) {
+    if (reset) { ui.cursor = null; ui.items = []; }
+    const q = new URLSearchParams({ limit: "10" });
+    if (ui.filter) q.set("status", ui.filter);
+    if (ui.cursor) q.set("cursor", ui.cursor);
+    const page = await api("GET", "/stores/me/orders?" + q);
+    ui.items = reset ? page.items : ui.items.concat(page.items);
+    ui.cursor = page.nextCursor;
+    $("#orders").innerHTML = ui.items.length ? ui.items.map(row).join("") : `<tr><td colspan="4"><div class="empty">Aún no hay pedidos${ui.filter ? " en este estado" : ""}.</div></td></tr>`;
+    $("#visibleOrders").textContent = ui.items.length;
+    $("#more").hidden = !ui.cursor;
+  }
+
+  async function loadStats() {
+    const s = await api("GET", "/stores/me/stats?month=" + month());
+    $("#delivered").textContent = s.deliveredCount;
+    $("#billed").textContent = money(s.totalFeeMinor);
+    $("#src").className = "badge src-" + s.source;
+    $("#src").textContent = s.source === "cache" ? "Resumen guardado" : "Resumen actualizado";
+  }
+
+  async function loadPresence() {
+    try {
+      const page = await api("GET", `/zones/${encodeURIComponent(store.zoneId)}/couriers?limit=20`);
+      $("#visibleCouriers").textContent = page.items.length + (page.nextCursor ? '+' : '');
+      $("#presence").innerHTML = page.items.length ? page.items.map((p) => `<div class="item" style="cursor:default">
+        <span><span class="pulse"></span> <b>${esc(p.courierId)}</b></span><span class="muted">vence en ${p.expiresInSeconds}s</span></div>`).join("")
+        : `<div class="empty">No hay repartidores conectados ahora.</div>`;
+    } catch (error) { $("#visibleCouriers").textContent = '—'; $("#presence").innerHTML = `<div class="empty">${esc(error.message)}</div>`; }
+  }
+
+  app.querySelectorAll("[data-filter]").forEach((b) => b.addEventListener("click", guard(async () => {
+    ui.filter = b.dataset.filter;
+    app.querySelectorAll("[data-filter]").forEach((o) => o.setAttribute("aria-pressed", String(o === b)));
+    await loadOrders(true);
+  })));
+  $("#more").addEventListener("click", guard(() => loadOrders(false)));
+  $("#orders").addEventListener("click", (e) => { const b = e.target.closest("[data-order]"); if (b) orderDialog(b.dataset.order, () => loadOrders(true)); });
+  $("#fee").addEventListener("input", () => { $("#feeView").textContent = money($("#fee").value); });
+  $("#refreshStats").addEventListener("click", guard(loadStats));
+  $("#refreshPresence").addEventListener("click", guard(loadPresence));
+  $("#newOrder").addEventListener("submit", guard(async (e) => {
+    e.preventDefault();
+    if (orderPointsError) {
+      const error = $("#order-points-error"); error.textContent = orderPointsError; error.hidden = false; error.focus(); return;
+    }
+    const body = { pickupAddress: $("#pickup").value, dropoffAddress: $("#dropoff").value, feeMinor: Number($("#fee").value), ...(orderPoints || {}) };
+    const created = await api("POST", "/orders", { body, intent: "create", validate: validCreatedOrder });
+    const tokens = load(TOKENS_KEY, {});
+    tokens[created.orderId] = created.trackingToken;
+    save(TOKENS_KEY, tokens);
+    $("#dropoff").value = "";
+    toast("Pedido publicado; ya lo ven los repartidores de la zona");
+    await loadOrders(true);
+    orderDialog(created.orderId, () => loadOrders(true));
+  }));
+  await Promise.all([loadOrders(true), loadStats(), loadPresence()]);
+  if (owner !== viewVersion) return;
+  every(8000, () => { if (!ui.cursor || ui.items.length <= 10) loadOrders(true).catch(() => {}); });
+  every(15000, () => loadPresence());
+}
+
+async function orderDialog(orderId, onChange) {
+  const dialog = document.createElement("dialog");
+  dialog.className = "live-dialog";
+  document.body.appendChild(dialog);
+  dialog.addEventListener("close", () => dialog.remove());
+  async function paint() {
+    const [order, events] = await Promise.all([api("GET", "/orders/" + encodeURIComponent(orderId)),
+      api("GET", `/orders/${encodeURIComponent(orderId)}/events?limit=50`)]);
+    const token = load(TOKENS_KEY, {})[orderId];
+    const link = token ? `${location.origin}/#/seguimiento/${encodeURIComponent(token)}` : null;
+    const canCancel = session.actor.role === "STORE" && ["PENDING", "ASSIGNED"].includes(order.status);
+    dialog.innerHTML = `<div class="dialog__body">
+      <div class="card__head"><h2>Pedido ${short(order.orderId)}</h2>${badge(order.status)}</div>
+      <p class="muted"><span class="mono">${esc(order.orderId)}</span></p>
+      <div class="grid grid--2" style="margin-top:14px">
+        <div class="stat"><span class="muted">Recoger en</span><b style="display:block">${esc(order.pickupAddress)}</b></div>
+        <div class="stat"><span class="muted">Entregar en</span><b style="display:block">${esc(order.dropoffAddress)}</b></div>
+      </div>
+      <div class="highlight"><span>Tarifa</span><strong>${money(order.feeMinor)}</strong></div>
+      <p class="muted" style="margin-top:12px">Zona ${esc(zoneName(order.zoneId))}${order.courierId ? ` · Repartidor <b>${esc(order.courierId)}</b>` : ""}</p>
+      ${session.actor.role === "STORE" ? `<a class="btn btn--block btn--ghost" href="#/ubicacion/${encodeURIComponent(orderId)}">Ver ubicación de la entrega</a>` : ""}
+      <h3 style="margin:18px 0 10px">Historial</h3>
+      <ol class="timeline">${events.items.map((ev) => `<li><b>${esc(EVENT_LABEL[ev.eventType] || ev.eventType)}</b><time>${when(ev.occurredAt)}</time></li>`).join("")}</ol>
+      ${link ? `<label for="share">Enlace de seguimiento para el cliente</label>
+        <div class="row"><input id="share" readonly value="${esc(link)}"><button class="btn btn--ghost" data-copy>Copiar enlace</button></div>` : ""}
+      <div class="row" style="margin-top:16px">
+        ${canCancel ? `<button class="btn btn--danger" data-cancel>Cancelar pedido</button>` : "<span></span>"}
+        <button class="btn" data-close>Cerrar</button></div></div>`;
+    dialog.querySelector('a[href^="#/ubicacion"]')?.addEventListener("click", () => dialog.close());
+    dialog.querySelector("[data-close]").addEventListener("click", () => dialog.close());
+    dialog.querySelector("[data-copy]")?.addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(link); toast("Enlace copiado"); } catch { $("#share", dialog).select(); }
+    });
+    dialog.querySelector("[data-cancel]")?.addEventListener("click", guard(async () => {
+      if (!confirm("¿Cancelar este pedido? Si ya tenía repartidor, quedará liberado.")) return;
+      await api("POST", `/orders/${encodeURIComponent(orderId)}/cancel`, { intent: "cancel:" + orderId });
+      toast("Pedido cancelado");
+      onChange?.();
+      await paint();
+    }));
+  }
+  try { await paint(); dialog.showModal(); } catch (error) { dialog.remove(); toast(error.message, true); }
+}
+
+// ---------- repartidor ----------
+async function courierView() {
+  const owner = viewVersion;
+  await zones();
+  if (owner !== viewVersion) return;
+  let courier = await profile("/couriers/me", "courier");
+  if (owner !== viewVersion || !courier) return;
+  if (!courier.enabled) return waiting("perfil de repartidor", courier.courierId, courier.approvalStatus);
+  updateProfile(courier.name, zoneName(courier.zoneId));
+  let presence = null;
+  app.innerHTML = `
+    <div class="live-heading"><div><p class="page-context">${esc(courier.name)} · ${esc(zoneName(courier.zoneId))}</p><h1>Vamos con la próxima.</h1><p>Tu jornada, una entrega a la vez.</p></div></div>
+    <div class="layout courier-layout">
+      <aside class="courier-task">
+        <section class="card">
+          <div class="switch"><span><b>Disponible</b><br><span class="muted" id="presenceText">Desconectado</span></span>
+            <input type="checkbox" id="available" aria-label="Disponible" ${courier.available ? "checked" : ""}></div>
+        </section>
+        <section class="card" id="active"></section>
+      </aside>
+
+      <div class="courier-lists">
+        <section class="card" id="courier-open" tabindex="-1"><div class="card__head"><h2>Pedidos disponibles en tu zona</h2><span class="muted" id="openCount"></span></div>
+          <div class="list" id="open"></div>
+          <button class="btn btn--block btn--ghost" id="moreOpen" hidden>Cargar más pedidos</button>
+          <button class="btn btn--block btn--ghost btn--sm" id="refreshOpen">Actualizar pedidos</button>
+          <p class="muted" style="margin-top:10px">Las ofertas cambian mientras otros repartidores aceptan pedidos.</p></section>
+        <section class="card" id="courier-history" tabindex="-1"><h2 style="margin-bottom:14px">Tu historial</h2><div class="list" id="history"></div>
+          <button class="btn btn--block btn--ghost" id="moreHistory" hidden>Cargar más historial</button></section>
+      </div>
+    </div>`;
+
+  async function beat() {
+    if (!courier.available) { $("#presenceText").textContent = "Desconectado"; return; }
+    try {
+      presence = await api("POST", "/couriers/me/heartbeat");
+      $("#presenceText").innerHTML = `<span class="pulse"></span> Conectado · se renueva cada 20 s`;
+    } catch (error) { $("#presenceText").textContent = error.message; }
+  }
+
+  async function loadActive() {
+    const { order } = await api("GET", "/couriers/me/active");
+    const box = $("#active");
+    if (!order) { box.innerHTML = `<h2>Sin pedido activo</h2><p class="muted" style="margin-top:6px">Acepta un pedido de la lista para empezar.</p>`; return null; }
+    const next = order.status === "ASSIGNED" ? ["pickup", "Marcar recogido"] : ["deliver", "Marcar entregado"];
+    box.innerHTML = `<div class="card__head"><h2>Pedido activo</h2>${badge(order.status)}</div>
+      <div class="stat"><span class="muted">Recoger en</span><b style="display:block">${esc(order.pickupAddress)}</b></div>
+      <div class="stat" style="margin-top:10px"><span class="muted">Entregar en</span><b style="display:block">${esc(order.dropoffAddress)}</b></div>
+      <div class="highlight"><span>Ganas</span><strong>${money(order.feeMinor)}</strong></div>
+      <button class="btn btn--block btn--accent" data-step="${next[0]}">${next[1]}</button>
+      <a class="btn btn--block btn--ghost" href="#/ubicacion/${encodeURIComponent(order.orderId)}">Compartir ubicación</a>`;
+    box.querySelector("[data-step]").addEventListener("click", guard(async () => {
+      await api("POST", `/orders/${encodeURIComponent(order.orderId)}/${next[0]}`, { intent: next[0] + ":" + order.orderId });
+      toast(next[0] === "pickup" ? "Pedido recogido" : "¡Entregado! Buen trabajo");
+      await Promise.all([loadActive(), loadHistory()]);
+    }));
+    return order;
+  }
+
+  const openBox = $("#open"), historyBox = $("#history");
+  const openMore = $("#moreOpen"), historyMore = $("#moreHistory"), openCount = $("#openCount");
+  const openPages = createPagedList({
+    loadPage: (cursor) => {
+      const query = new URLSearchParams({ zoneId: courier.zoneId, limit: "20" });
+      if (cursor) query.set("cursor", cursor);
+      return api("GET", "/orders/available?" + query, { validate: validPage });
+    },
+    onChange: (page) => {
+      const active = !!$("#active [data-step]");
+      openCount.textContent = `${page.items.length} cargados${page.nextCursor ? " · hay más" : ""}`;
+      openBox.innerHTML = page.items.length ? page.items.map((o) => `<div class="item" style="cursor:default">
+        <span><b>${esc(o.pickupAddress)}</b><br><span class="id">${esc(o.orderId)}</span></span><strong>${money(o.feeMinor)}</strong>
+        <span class="meta"><span>Publicado ${when(o.createdAt)}</span>
+          <button class="btn btn--sm" data-accept="${esc(o.orderId)}" ${active || !courier.available ? "disabled" : ""}>Aceptar</button></span></div>`).join("")
+        : `<div class="empty">No hay pedidos abiertos en tu zona.</div>`;
+      openMore.hidden = !page.nextCursor;
+    },
+  });
+  const historyPages = createPagedList({
+    loadPage: (cursor) => {
+      const query = new URLSearchParams({ limit: "10" });
+      if (cursor) query.set("cursor", cursor);
+      return api("GET", "/couriers/me/orders?" + query, { validate: validPage });
+    },
+    onChange: (page) => {
+      historyBox.innerHTML = page.items.length ? page.items.map((o) => `<div class="item" style="cursor:default">
+        <span class="id">${esc(o.orderId)}</span>${badge(o.status)}<span class="meta"><span>${when(o.updatedAt)}</span></span></div>`).join("")
+        : `<div class="empty">Todavía no has hecho entregas.</div>`;
+      historyMore.hidden = !page.nextCursor;
+    },
+  });
+  const loadOpen = () => openPages.refresh();
+  const loadHistory = () => historyPages.refresh();
+  openMore.addEventListener("click", guard(() => openPages.loadMore()));
+  historyMore.addEventListener("click", guard(() => historyPages.loadMore()));
+  $("#refreshOpen").addEventListener("click", guard(loadOpen));
+
+  $("#open").addEventListener("click", guard(async (e) => {
+    const b = e.target.closest("[data-accept]");
+    if (!b) return;
+    try {
+      await api("POST", `/orders/${encodeURIComponent(b.dataset.accept)}/accept`, { intent: "accept:" + b.dataset.accept });
+      toast("¡Pedido tuyo! Ve a recogerlo");
+    } catch (error) {
+      toast(error.code === "ORDER_ALREADY_ASSIGNED" ? "Otro repartidor lo aceptó primero" : error.message, true);
+    }
+    await loadActive();
+    await Promise.all([loadOpen(), loadHistory()]);
+  }));
+  $("#available").addEventListener("change", guard(async (e) => {
+    courier = await api("PATCH", "/couriers/me/availability", { body: { available: e.target.checked } });
+    e.target.checked = courier.available;
+    toast(courier.available ? "Estás disponible" : "Te desconectaste; tu pedido activo sigue a tu cargo");
+    await beat();
+    await loadOpen();
+  }));
+  await loadActive();
+  await Promise.all([loadOpen(), loadHistory(), beat()]);
+  if (owner !== viewVersion) return;
+  every(20000, beat);
+  every(6000, () => { loadActive().then(loadOpen).catch(() => {}); });
+}
+
+// ---------- administración ----------
+function adminView() {
+  app.innerHTML = `<div class="live-heading"><div><h1>Administración</h1><p>Perfiles, entregas e incidencias de tu operación.</p></div></div>
+    <div id="admin-approvals"></div><div class="grid grid--2">
+      ${["store", "courier"].map((k) => `<section class="card" id="admin-${k}-manual" tabindex="-1"><h2>Acceso manual · ${k === "store" ? "comercios" : "repartidores"}</h2>
+        <form data-enable="${k}"><label for="${k}Id">Identificador</label><input id="${k}Id" required pattern="[A-Za-z0-9_\\-]+">
+          <div class="row"><button class="btn btn--block" value="true">Habilitar</button><button class="btn btn--block btn--danger" value="false">Deshabilitar</button></div>
+          <p class="muted" data-out style="margin-top:10px"></p></form></section>`).join("")}
+      <section class="card" id="admin-orders" tabindex="-1"><h2>Consultar pedido</h2>
+        <form id="lookup"><label for="orderId">ID del pedido</label><input id="orderId" required>
+          <div class="row"><button class="btn btn--block btn--ghost" value="view">Ver detalle</button><button class="btn btn--block btn--danger" value="fail">Marcar fallido</button></div></form>
+        <p class="muted" style="margin-top:10px">Marcar fallido es un procedimiento excepcional: solo desde «Recogido».</p></section>
+      <section class="card"><h2>Presencia por zona</h2><form id="zoneForm"><label for="zoneSel">Zona</label><select id="zoneSel"></select>
+        <button class="btn btn--block btn--ghost">Ver conectados</button></form><div class="list" id="zoneOut" style="margin-top:12px"></div></section>
+    </div>`;
+  disposeGeo = mountApprovals($("#admin-approvals"), session);
+  zones().then((list) => { $("#zoneSel").innerHTML = list.map((z) => `<option value="${esc(z.zoneId)}">${esc(z.name)}</option>`).join(""); });
+  app.querySelectorAll("[data-enable]").forEach((form) => form.addEventListener("submit", guard(async (e) => {
+    e.preventDefault();
+    const kind = form.dataset.enable;
+    const id = $(`#${kind}Id`).value.trim();
+    const enabled = e.submitter?.value !== "false";
+    const result = await api("PATCH", `/admin/${kind === "store" ? "stores" : "couriers"}/${encodeURIComponent(id)}`, { body: { enabled } });
+    $("[data-out]", form).textContent = `${result.name}: ${result.enabled ? "habilitado" : "deshabilitado"} (versión ${result.version})`;
+    toast("Cambio guardado");
+  })));
+  $("#lookup").addEventListener("submit", guard(async (e) => {
+    e.preventDefault();
+    const id = $("#orderId").value.trim();
+    if (e.submitter?.value === "fail") {
+      if (!confirm("¿Marcar este pedido como fallido?")) return;
+      await api("POST", `/orders/${encodeURIComponent(id)}/fail`, { intent: "fail:" + id });
+      toast("Pedido marcado como fallido");
+    }
+    orderDialog(id);
+  }));
+  $("#zoneForm").addEventListener("submit", guard(async (e) => {
+    e.preventDefault();
+    const page = await api("GET", `/zones/${encodeURIComponent($("#zoneSel").value)}/couriers?limit=50`);
+    $("#zoneOut").innerHTML = page.items.length ? page.items.map((p) => `<div class="item" style="cursor:default"><span><span class="pulse"></span> ${esc(p.courierId)}</span><span class="muted">${p.expiresInSeconds}s</span></div>`).join("")
+      : `<div class="empty">Nadie conectado en esta zona.</div>`;
+  }));
+}
+
+// ---------- seguimiento público ----------
+async function trackingView(token) {
+  if (!token) {
+    app.innerHTML = `<section class="card public-tracking"><h1>Sigue tu entrega.</h1><p class="muted" style="margin-top:12px">Pega el enlace o código que te compartió el comercio.</p><form id="trackForm"><label for="token">Código de seguimiento</label><input id="token" required placeholder="Tu enlace o código"><button class="btn btn--block">Ver estado</button></form></section>`;
+    $('#trackForm').addEventListener('submit',event=>{event.preventDefault();const raw=$('#token').value.trim();location.hash='#/seguimiento/'+encodeURIComponent(raw.split('/seguimiento/').pop());});
+    return;
+  }
+  app.innerHTML = `<section class="card public-tracking" id="tracking"><p class="muted">Consultando…</p></section>`;
+  async function paint() {
+    const box = $("#tracking");
+    try {
+      const t = await api("GET", "/tracking/" + encodeURIComponent(token) + "?limit=50");
+      const reached = new Set(t.events.map((e) => e.eventType));
+      const flow = [["CREATED", "Creado"], ["ASSIGNED", "Asignado"], ["PICKED_UP", "Recogido"], ["DELIVERED", "Entregado"]];
+      box.innerHTML = `<div class="card__head"><h1>Tu pedido</h1>${badge(t.status)}</div>
+        <p class="muted">Actualizado ${when(t.updatedAt)}</p>
+        ${["CANCELLED", "FAILED"].includes(t.status) ? `<div class="notice" style="margin-top:14px">${t.status === "CANCELLED" ? "El comercio canceló este pedido." : "La entrega no pudo completarse."}</div>`
+          : `<div class="steps">${flow.map(([k, l]) => `<div class="step ${reached.has(k) ? "done" : ""}">${l}</div>`).join("")}</div>`}
+        <ol class="timeline">${t.events.map((e) => `<li><b>${esc(EVENT_LABEL[e.eventType] || e.eventType)}</b><time>${when(e.occurredAt)}</time></li>`).join("")}</ol>
+        <p class="muted" style="margin-top:14px">Consulta el avance de tu entrega y la ubicación que comparta el repartidor.</p>
+        <a class="btn btn--block btn--ghost" href="#/mapa/${encodeURIComponent(token)}">Ver ubicación compartida</a>`;
+    } catch (error) {
+      box.innerHTML = `<h2>No encontramos ese pedido</h2><p class="muted" style="margin-top:8px">Revisa el enlace que te compartieron.</p>
+        <a class="btn btn--block btn--ghost" href="#/seguimiento">Probar con otro código</a>`;
+      timers.forEach(clearInterval); timers = [];
+    }
+  }
+  await paint();
+  every(10000, paint);
+}
+
+// ---------- enrutado ----------
+async function render() {
+  const owner = ++viewVersion;
+  timers.forEach(clearInterval);
+  timers = [];
+  disposeGeo?.(); disposeGeo = null;
+  window.scrollTo({top:0,behavior:'instant'});
+  nav();
+  const [, route, arg] = location.hash.split("/");
+  try {
+    if (route === 'mapa' || (route === 'ubicacion' && session)) {
+      app.innerHTML = '<div id="live-geo"></div>';
+      disposeGeo = mountGeo(document.getElementById('live-geo'), arg ? decodeURIComponent(arg) : '', route === 'mapa', session);
+      return;
+    }
+    if (route === "seguimiento") return await trackingView(arg ? decodeURIComponent(arg) : "");
+    if (!session) return home();
+    const target = { STORE: "comercio", COURIER: "repartidor", ADMIN: "admin" }[session.actor.role];
+    if (route !== target) { location.hash = "#/" + target; return; }
+    if (target === "comercio") return await storeView();
+    if (target === "repartidor") return await courierView();
+    return adminView();
+  } catch (error) {
+    if (owner !== viewVersion) return;
+    app.innerHTML = `<section class="card" style="max-width:560px;margin:0 auto"><h1>No pudimos cargar esta vista</h1>
+      <p class="muted" style="margin-top:8px">${esc(error.message)}</p><button class="btn btn--block" data-act="reload">Reintentar</button></section>`;
+  }
+}
+
+document.addEventListener("click", (e) => {
+  const act = e.target.closest("[data-act]")?.dataset.act;
+  if (act === "logout") logout(false);
+  if (act === "reload") render();
+});
+document.addEventListener("flashdelivery:logout", () => logout(false));
+window.addEventListener("hashchange", render);
+render();

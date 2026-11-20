@@ -1,0 +1,29 @@
+# Especificaciones de FlashDelivery
+
+Base importada del paquete v1.1 aportado por el usuario. Son requisitos y criterios de aceptación; su presencia no implica implementación ni validación. Consultar el [plan](../PLAN_DE_TRABAJO.md) para conocer las brechas actuales.
+
+Estado: SPEC-00 a SPEC-11 fusionadas. SPEC-12 añade catálogo de endpoints, pendiente revisión. Evidencias fechadas en [validación](../validation.md).
+
+| Orden | Especificación | Resultado esperado |
+| --- | --- | --- |
+| 0 | [Infraestructura](SPEC-00-INFRA-MINISTACK.md) | Entorno y despliegue local verificables |
+| 1 | [Datos](SPEC-01-DYNAMODB.md) | Claves, índices y consultas por patrón de acceso |
+| 2 | [Transacciones](SPEC-02-TRANSACCIONES.md) | Estados, unicidad e idempotencia |
+| 3 | [Contratos](SPEC-03-CONTRATOS.md) | API, identidad y permisos |
+| 4 | [Primer flujo](SPEC-04-IMPLEMENTACION-BASE.md) | Comercio habilitado crea y consulta pedidos |
+| 5 | [Asignación y lecturas](SPEC-05-DISPATCH-Y-LECTURAS.md) | Aceptar, recoger, entregar, cancelar, presencia, seguimiento y métricas |
+| 6 | [Calidad](SPEC-06-CALIDAD.md) | Evidencia reproducible de corrección y rendimiento |
+| 7 | [Fiabilidad del frontend](SPEC-07-FRONTEND-FIABILIDAD.md) | Reintentos persistidos, paginación del repartidor y tests de navegador |
+| 8 | [Seguimiento vial v2](SPEC-08_LIVE_DELIVERY_TRACKING_v2.md) | OSRM privado, MapLibre, rutas por fase, progreso/ETA, desvíos, simulador vial y permisos; [guía](../geo/README.md). Sustituye el alcance de [v1](SPEC-08_GPS_TRACKING.md). |
+| 9 | [Demo guiada](SPEC-09-DEMO-GUIADA.md) | Registro/aprobación guiados, puntos completos y simulación por fase; fusionada y validada |
+| 10 | [Aprobaciones administrativas](SPEC-10-APROBACIONES-ADMIN.md) | Bandejas por estado, auditoría y suspensión segura; fusionada y validada |
+| 11 | [Documentación y estudio](SPEC-11-DOCUMENTACION-ESTUDIO.md) | Documentación vigente, claves e índices explicados, ejemplos y comprobación de coherencia |
+| 12 | [Catálogo de endpoints](SPEC-12-CATALOGO-ENDPOINTS.md) | 40 operaciones de módulos y 3 sondas, permisos, parámetros y respuestas explicadas |
+
+El contrato vigente está en [OpenAPI](../api/openapi.json). Para nuevas funcionalidades, detallar actor, entradas, autorización, precondiciones, resultados, errores, persistencia y pruebas. `requestId` de trazabilidad e `Idempotency-Key` son conceptos distintos; mantener esa separación en API y frontend.
+
+## Diseño frontend v2.1
+
+[SPEC-07 de diseño v2.1](SPEC-07_FRONTEND_DESIGN_v2.1.md) es un trabajo adicional a la SPEC-07 de fiabilidad. FE-00/FE-01 implementadas como prototipo aislado, base visual aprobada y PR fusionado. La unificación posterior conectó las vistas funcionales con la API; queda reconciliar los criterios completos de FE-02 a FE-06 y especificar las brechas reales. Consultar [decisiones](../frontend/FE-00-DISENO.md), [guía y capturas](../frontend/FE-01-REVISION.md). El prototipo de referencia usa fixtures; la aplicación funcional usa la API.
+
+La aplicación funcional adopta el [diseño unificado](../frontend/UNIFICACION.md) en :8080, incluidos mapas dentro de la navegación. El prototipo de diseño mantiene sus fixtures únicamente como referencia.

@@ -1,0 +1,62 @@
+name: Tests
+
+on:
+  pull_request:
+    branches: [develop]
+  push:
+    branches: ['feature/**']
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npm run lint
+      - run: npm run test:design
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - run: npm run test:design:e2e
+      - run: npm run test:geo:e2e
+      - run: npm run test:geo:production
+      - run: npm run test:unified:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: frontend-test-results
+          path: frontend/test-results/
+          retention-days: 7
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            app/requirements.txt
+            app/requirements.lock
+            app/layers/dependencias/requirements.txt
+            app/layers/dependencias/requirements.lock
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install -r app/requirements.txt
+      - run: python -m pip check
+      - run: python -m pytest app/tests/ -v
+        env:
+          JSII_RUNTIME_PACKAGE_CACHE: disabled

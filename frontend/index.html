@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="es-CO">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Organiza tus entregas, comparte su avance y sigue cada pedido." />
+    <title>FlashDelivery</title>
+    <script>
+      (() => {
+        let preference = 'system';
+        try { preference = localStorage.getItem('flashdelivery:theme:v1') || 'system'; } catch {}
+        if (!['system', 'light', 'dark'].includes(preference)) preference = 'system';
+        const dark = preference === 'dark' || (preference === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="live-root"></div>
+    <script type="module" src="/live-entry.js"></script>
+  </body>
+</html>

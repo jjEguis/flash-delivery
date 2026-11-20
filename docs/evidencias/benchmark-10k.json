@@ -1,0 +1,112 @@
+{
+  "namespace": "BENCH_4d872a8c",
+  "orders": 10000,
+  "samples": 100,
+  "machine": {
+    "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.36",
+    "python": "3.12.16",
+    "cpus": 12,
+    "emulator": "ministackorg/ministack:1.5.36"
+  },
+  "load": {
+    "items": 20000,
+    "seconds": 274.94,
+    "items_per_second": 72.7
+  },
+  "patterns": {
+    "AP03 GetItem pedido": {
+      "n": 100,
+      "p50_ms": 1.81,
+      "p95_ms": 2.93,
+      "mean_ms": 2.01,
+      "max_ms": 5.93
+    },
+    "AP05 Query GSI1 pedidos del comercio (25)": {
+      "n": 100,
+      "p50_ms": 348.88,
+      "p95_ms": 398.95,
+      "mean_ms": 355.52,
+      "max_ms": 505.37
+    },
+    "AP06 Query GSI2 por estado (25)": {
+      "n": 100,
+      "p50_ms": 75.98,
+      "p95_ms": 93.12,
+      "mean_ms": 79.05,
+      "max_ms": 134.2
+    },
+    "AP08 Query GSI2 abiertos de zona (25)": {
+      "n": 100,
+      "p50_ms": 79.38,
+      "p95_ms": 92.31,
+      "mean_ms": 80.73,
+      "max_ms": 99.16
+    }
+  },
+  "patterns_items_returned": 25,
+  "items_read_AP05_query": {
+    "items_read": 25,
+    "returned": 25
+  },
+  "scan_equivalent_AP05": {
+    "n": 10,
+    "p50_ms": 1444.22,
+    "p95_ms": 1522.37,
+    "mean_ms": 1456.95,
+    "max_ms": 1522.37,
+    "items_read": 20017,
+    "matched": 10000,
+    "returned": 25,
+    "pages": 9
+  },
+  "cache_stats": {
+    "miss": {
+      "n": 100,
+      "p50_ms": 2.36,
+      "p95_ms": 3.45,
+      "mean_ms": 2.51,
+      "max_ms": 9.08
+    },
+    "hit": {
+      "n": 100,
+      "p50_ms": 0.17,
+      "p95_ms": 0.33,
+      "mean_ms": 0.18,
+      "max_ms": 0.67
+    },
+    "ttl_seconds": 300
+  },
+  "concurrency_100_accepts": {
+    "outcomes": {
+      "ORDER_ALREADY_ASSIGNED": 99,
+      "won": 1
+    },
+    "wall_seconds": 34.93,
+    "latency": {
+      "n": 100,
+      "p50_ms": 10978.59,
+      "p95_ms": 12113.36,
+      "mean_ms": 10713.49,
+      "max_ms": 13065.56
+    }
+  },
+  "http": {
+    "/api/v1/health": {
+      "first_call_ms": 77.22,
+      "n": 50,
+      "p50_ms": 54.78,
+      "p95_ms": 56.17,
+      "mean_ms": 54.9,
+      "max_ms": 57.45
+    },
+    "/api/v1/zones": {
+      "first_call_ms": 63.6,
+      "n": 50,
+      "p50_ms": 55.1,
+      "p95_ms": 57.06,
+      "mean_ms": 55.28,
+      "max_ms": 61.72
+    }
+  },
+  "cleanup_keys": 20406
+}

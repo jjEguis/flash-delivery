@@ -1,0 +1,17 @@
+.git
+.env
+.venv
+.local
+cdk.out
+__pycache__
+.pytest_cache
+FlashDelivery_*.zip
+
+**/.local
+**/cdk.out
+**/__pycache__
+**/.pytest_cache
+**/node_modules
+**/test-results
+**/playwright-report
+**/design-dist

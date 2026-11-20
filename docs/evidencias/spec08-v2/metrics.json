@@ -1,0 +1,10 @@
+{
+  "requests": 44,
+  "distinctOperations": 17,
+  "routingCalls": 3,
+  "p50Ms": 66.17,
+  "p95Ms": 73.96,
+  "stableRouteReads": 10,
+  "samplesBeforePhaseChange": 7,
+  "routeVersionsBeforePhaseChange": 1
+}

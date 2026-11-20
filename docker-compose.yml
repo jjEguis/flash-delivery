@@ -1,0 +1,128 @@
+services:
+  cdk-dev:
+    build: .
+    working_dir: /app
+    user: "${DEV_UID:-1000}:${DEV_GID:-1000}"
+    volumes:
+      - ./app:/app
+      - ./docs:/docs:ro
+    environment:
+      HOME: /tmp
+      IN_CDK_DEV: "1"
+      ENVIRONMENT: local
+      AWS_ENDPOINT_URL: http://ministack:4566
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_EC2_METADATA_DISABLED: "true"
+      DYNAMODB_TABLE_NAME: ${DYNAMODB_TABLE_NAME:-FlashDeliveryTable}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      OSRM_URL: http://osrm:5000
+      OSRM_TIMEOUT_SECONDS: ${OSRM_TIMEOUT_SECONDS:-3}
+      ROUTING_BBOX: ${ROUTING_BBOX:--74.28,11.12,-74.05,11.36}
+      LOCATION_TTL_SECONDS: ${LOCATION_TTL_SECONDS:-120}
+      LOCATION_FRESH_SECONDS: ${LOCATION_FRESH_SECONDS:-15}
+      LOCATION_MIN_INTERVAL_MS: ${LOCATION_MIN_INTERVAL_MS:-3000}
+      ROUTE_TTL_SECONDS: ${ROUTE_TTL_SECONDS:-300}
+      ROUTE_DEVIATION_METERS: ${ROUTE_DEVIATION_METERS:-50}
+      ROUTE_RECALCULATE_SECONDS: ${ROUTE_RECALCULATE_SECONDS:-30}
+      TRACKING_SIMULATION_ENABLED: ${TRACKING_SIMULATION_ENABLED:-true}
+    networks: [local]
+    depends_on:
+      ministack:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+  ministack:
+    image: ${MINISTACK_IMAGE:-ministackorg/ministack:1.5.36}
+    ports:
+      - "127.0.0.1:${MINISTACK_PORT:-4566}:4566"
+    environment:
+      GATEWAY_PORT: "4566"
+      MINISTACK_REGION: ${AWS_REGION:-us-east-1}
+      MINISTACK_ACCOUNT_ID: "000000000000"
+      PERSIST_STATE: "1"
+      STATE_DIR: /data/state
+      LAMBDA_EXECUTOR: local
+    volumes:
+      - ministack-data:/data
+    networks: [local]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4566/_ministack/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    stop_grace_period: 30s
+  redis:
+    image: ${REDIS_IMAGE:-redis:7.4.2-alpine}
+    command: [redis-server, --appendonly, 'yes']
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    networks: [local]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    stop_grace_period: 15s
+  osm-download:
+    profiles: [geo-prepare]
+    build: ./infra/osrm
+    environment:
+      OSM_PBF_URL: ${OSM_PBF_URL:-https://download.geofabrik.de/south-america/colombia-latest.osm.pbf}
+      ROUTING_BBOX: ${ROUTING_BBOX:--74.28,11.12,-74.05,11.36}
+    volumes: [osrm-data:/data]
+    networks: [local]
+  osrm-prepare:
+    profiles: [geo-prepare]
+    image: ${OSRM_IMAGE:-ghcr.io/project-osrm/osrm-backend:v5.27.1}
+    volumes: [osrm-data:/data]
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        test -f /data/processed.ok && exit 0
+        osrm-extract -p /opt/car.lua /data/santa-marta.osm.pbf
+        osrm-partition /data/santa-marta.osrm
+        osrm-customize /data/santa-marta.osrm
+        touch /data/processed.ok
+    networks: [local]
+  osrm:
+    image: ${OSRM_IMAGE:-ghcr.io/project-osrm/osrm-backend:v5.27.1}
+    command: [osrm-routed, --algorithm, mld, --verbosity, WARNING, /data/santa-marta.osrm]
+    volumes: [osrm-data:/data:ro]
+    networks: [local]
+    healthcheck:
+      test: ["CMD", "bash", "-ec", "exec 3<>/dev/tcp/127.0.0.1/5000; printf 'GET /route/v1/driving/-74.211,11.244;-74.201,11.237?overview=false HTTP/1.0\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; cat <&3 | grep -q '\"code\":\"Ok\"'"]
+      interval: 10s
+      timeout: ${OSRM_HEALTH_TIMEOUT:-5s}
+      retries: 12
+      start_period: 10s
+  web:
+    image: ${WEB_IMAGE:-python:3.12-slim-bookworm}
+    command: [python, /frontend/server.py]
+    working_dir: /frontend
+    user: "${DEV_UID:-1000}:${DEV_GID:-1000}"
+    environment:
+      API_UPSTREAM: http://ministack:4566
+      OUTPUTS_FILE: /outputs/outputs.json
+      PORT: "8080"
+    volumes:
+      - ./frontend:/frontend:ro
+      - ./app/.local:/outputs:ro
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:8080"
+    networks: [local]
+    depends_on:
+      ministack:
+        condition: service_healthy
+networks:
+  local:
+    driver: bridge
+volumes:
+  ministack-data:
+  redis-data:
+  osrm-data:
